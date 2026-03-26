@@ -18,6 +18,26 @@ import { getCategoryConfig } from "@/lib/category-config";
 import type { DaySummary } from "@/lib/types";
 import { formatDateMedium, formatTimeRange } from "@/lib/utils";
 
+function hasMapCoordinates(event: DaySummary["events"][number]) {
+  return event.lat !== null && event.lng !== null;
+}
+
+function getEventMapLabel(event: DaySummary["events"][number]) {
+  if (event.location?.trim()) {
+    return event.location;
+  }
+
+  return `Lat ${Number(event.lat).toFixed(4)}, Lon ${Number(event.lng).toFixed(4)}`;
+}
+
+function getEventMapsHref(event: DaySummary["events"][number]) {
+  const query = event.location?.trim()
+    ? event.location
+    : `${event.lat},${event.lng}`;
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
 function MapFlyTo({
   center,
   zoom,
@@ -46,12 +66,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
     () =>
       filteredDays.flatMap((day) =>
         day.events
-          .filter(
-            (event) =>
-              Boolean(event.location) &&
-              event.lat !== null &&
-              event.lng !== null
-          )
+          .filter((event) => hasMapCoordinates(event))
           .map((event) => ({
             ...event,
             dayId: day.id,
@@ -64,14 +79,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   );
 
   const route = filteredDays
-    .map((day) =>
-      day.events.find(
-        (event) =>
-          Boolean(event.location) &&
-          event.lat !== null &&
-          event.lng !== null
-      )
-    )
+    .map((day) => day.events.find((event) => hasMapCoordinates(event)))
     .filter(
       (event): event is NonNullable<typeof event> => Boolean(event)
     )
@@ -95,12 +103,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
     }
 
     const day = days.find((d) => d.dayNumber === filter);
-    const first = day?.events.find(
-      (event) =>
-        Boolean(event.location) &&
-        event.lat !== null &&
-        event.lng !== null
-    );
+    const first = day?.events.find((event) => hasMapCoordinates(event));
     if (!first) {
       return { center: null, zoom: 8 };
     }
@@ -192,7 +195,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                       </Badge>
                     </div>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {event.location}
+                      {getEventMapLabel(event)}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {formatTimeRange(event.startTime, event.endTime)}
@@ -286,12 +289,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
 
           {filteredDays.map((day) =>
             day.events
-              .filter(
-                (event) =>
-                  Boolean(event.location) &&
-                  event.lat !== null &&
-                  event.lng !== null
-              )
+              .filter((event) => hasMapCoordinates(event))
               .map((event) => (
               <Marker
                 key={event.id}
@@ -319,9 +317,9 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                   <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
                     {formatTimeRange(event.startTime, event.endTime)}
                   </p>
-                  {event.location ? (
-                    <p style={{ fontSize: 13, marginBottom: 4 }}>{event.location}</p>
-                  ) : null}
+                  <p style={{ fontSize: 13, marginBottom: 4 }}>
+                    {getEventMapLabel(event)}
+                  </p>
                   {event.description ? (
                     <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
                       {event.description}
@@ -337,16 +335,14 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                       Day {day.dayNumber}: {day.title}
                     </p>
                   ) : null}
-                  {event.location ? (
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}
-                    >
-                      Open in Maps →
-                    </a>
-                  ) : null}
+                  <a
+                    href={getEventMapsHref(event)}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}
+                  >
+                    Open in Maps →
+                  </a>
                 </Popup>
               </Marker>
             ))
