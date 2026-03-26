@@ -7,9 +7,10 @@ import { getDayByDate } from "@/lib/server-data";
 
 export async function GET(
   _request: Request,
-  { params }: { params: { date: string } }
+  { params }: { params: Promise<{ date: string }> }
 ) {
-  const day = await getDayByDate(params.date);
+  const { date } = await params;
+  const day = await getDayByDate(date);
 
   if (!day) {
     return NextResponse.json({ error: "Day not found." }, { status: 404 });
@@ -20,7 +21,7 @@ export async function GET(
 
 export async function PUT(
   request: Request,
-  { params }: { params: { date: string } }
+  { params }: { params: Promise<{ date: string }> }
 ) {
   const db = getDb();
   if (!db) {
@@ -31,10 +32,11 @@ export async function PUT(
   }
 
   const payload = (await request.json()) as { notes?: string };
+  const { date } = await params;
   const [updated] = await db
     .update(days)
     .set({ notes: payload.notes ?? null })
-    .where(eq(days.date, params.date))
+    .where(eq(days.date, date))
     .returning();
 
   return NextResponse.json(updated);

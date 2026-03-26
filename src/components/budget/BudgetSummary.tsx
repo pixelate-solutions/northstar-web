@@ -21,8 +21,8 @@ export function BudgetSummary({ expenses }: { expenses: Expense[] }) {
       <CardHeader>
         <CardTitle>Category Breakdown</CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
-        <div className="h-72">
+      <CardContent className="grid min-w-0 gap-4 lg:grid-cols-[1fr_0.9fr]">
+        <div className="h-72 min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie

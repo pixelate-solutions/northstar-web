@@ -35,6 +35,20 @@ const defaultForm = {
   notes: "",
 };
 
+function getPackingForm(initialItem: PackingItemType | null) {
+  return initialItem
+    ? {
+        name: initialItem.name,
+        category: initialItem.category,
+        quantity: initialItem.quantity ?? 1,
+        isPacked: initialItem.isPacked ?? false,
+        isEssential: initialItem.isEssential ?? false,
+        daySpecific: initialItem.daySpecific ? String(initialItem.daySpecific) : "",
+        notes: initialItem.notes ?? "",
+      }
+    : defaultForm;
+}
+
 export function PackingManager({
   initialItems,
   days,
@@ -215,6 +229,7 @@ export function PackingManager({
               key={day.id}
               type="button"
               onClick={() => setDayFilter(String(day.id))}
+              onDoubleClick={() => router.push(`/days/${day.date}`)}
               className={`rounded-full border px-4 py-2 text-sm ${
                 dayFilter === String(day.id)
                   ? "border-primary/30 bg-primary/10 text-primary"
@@ -254,6 +269,7 @@ export function PackingManager({
       )}
 
       <PackingItemDialog
+        key={`${editingItem?.id ?? "new"}-${modalOpen ? "open" : "closed"}`}
         open={modalOpen}
         onOpenChange={(open) => {
           setModalOpen(open);
@@ -280,23 +296,7 @@ function PackingItemDialog({
   initialItem: PackingItemType | null;
   onSubmit: (payload: Record<string, unknown>) => void;
 }) {
-  const [form, setForm] = useState(defaultForm);
-
-  useEffect(() => {
-    setForm(
-      initialItem
-        ? {
-            name: initialItem.name,
-            category: initialItem.category,
-            quantity: initialItem.quantity ?? 1,
-            isPacked: initialItem.isPacked ?? false,
-            isEssential: initialItem.isEssential ?? false,
-            daySpecific: initialItem.daySpecific ? String(initialItem.daySpecific) : "",
-            notes: initialItem.notes ?? "",
-          }
-        : defaultForm
-    );
-  }, [initialItem, open]);
+  const [form, setForm] = useState(() => getPackingForm(initialItem));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

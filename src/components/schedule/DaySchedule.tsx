@@ -92,6 +92,30 @@ function SortableEvent({
   );
 }
 
+function StaticEvent({
+  event,
+  date,
+  onOpen,
+  onEdit,
+  onDelete,
+}: {
+  event: Event;
+  date: string;
+  onOpen?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
+  return (
+    <EventCard
+      event={event}
+      date={date}
+      onOpen={onOpen}
+      onEdit={onEdit}
+      onDelete={onDelete}
+    />
+  );
+}
+
 interface DayScheduleProps {
   dayId: number;
   date: string;
@@ -99,6 +123,7 @@ interface DayScheduleProps {
   sortable?: boolean;
   editable?: boolean;
   showAddButton?: boolean;
+  showHeader?: boolean;
   title?: string;
 }
 
@@ -109,6 +134,7 @@ export function DaySchedule({
   sortable = false,
   editable = true,
   showAddButton = true,
+  showHeader = true,
   title = "Day Timeline",
 }: DayScheduleProps) {
   const router = useRouter();
@@ -116,10 +142,15 @@ export function DaySchedule({
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
+  const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
     setItems(sortEventsByTime(events));
   }, [events]);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -132,6 +163,7 @@ export function DaySchedule({
     () => Math.max(...items.map((item) => item.sortOrder ?? 0), 0) + 1,
     [items]
   );
+  const interactiveSortable = sortable && editable && hasMounted;
 
   async function removeEvent(event: Event) {
     const response = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
@@ -172,15 +204,17 @@ export function DaySchedule({
   if (!items.length) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold">{title}</h2>
-          {editable && showAddButton ? (
-            <Button onClick={() => setModalOpen(true)}>
-              <Plus className="size-4" />
-              Add Event
-            </Button>
-          ) : null}
-        </div>
+        {showHeader ? (
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">{title}</h2>
+            {editable && showAddButton ? (
+              <Button onClick={() => setModalOpen(true)}>
+                <Plus className="size-4" />
+                Add Event
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
         <EmptyState
           title="No events scheduled yet"
           description={
@@ -193,6 +227,7 @@ export function DaySchedule({
         />
         {editable ? (
           <EventModal
+            key={`day-${dayId}-new-${modalOpen ? "open" : "closed"}`}
             dayId={dayId}
             date={date}
             open={modalOpen}
@@ -207,76 +242,109 @@ export function DaySchedule({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold">{title}</h2>
-          <p className="text-sm text-muted-foreground">
-            {editable
-              ? "Tap an event to edit it or add new stops inline."
-              : "Overview of the day's schedule."}
-          </p>
-        </div>
-        {editable && showAddButton ? (
-          <Button onClick={() => setModalOpen(true)}>
-            <Plus className="size-4" />
-            Add Event
-          </Button>
-        ) : null}
-      </div>
-
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={({ active, over }) => {
-          if (!sortable || !over || active.id === over.id) return;
-          const oldIndex = items.findIndex((item) => item.id === active.id);
-          const newIndex = items.findIndex((item) => item.id === over.id);
-          const reordered = arrayMove(items, oldIndex, newIndex).map((item, index) => ({
-            ...item,
-            sortOrder: index + 1,
-          }));
-          setItems(reordered);
-          void persistOrder(reordered);
-        }}
-      >
-        <SortableContext
-          items={items.map((item) => item.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <div className="space-y-4">
-            {items.map((event) => (
-              <div key={event.id}>
-                <SortableEvent
-                  event={event}
-                  date={date}
-                  sortable={sortable && editable}
-                  onOpen={
-                    editable
-                      ? () => {
-                          setSelectedEvent(event);
-                          setModalOpen(true);
-                        }
-                      : undefined
-                  }
-                  onEdit={
-                    editable
-                      ? () => {
-                          setSelectedEvent(event);
-                          setModalOpen(true);
-                        }
-                      : undefined
-                  }
-                  onDelete={editable ? () => setEventToDelete(event) : undefined}
-                />
-              </div>
-            ))}
+      {showHeader ? (
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">{title}</h2>
+            <p className="text-sm text-muted-foreground">
+              {editable
+                ? "Tap an event to edit it or add new stops inline."
+                : "Overview of the day's schedule."}
+            </p>
           </div>
-        </SortableContext>
-      </DndContext>
+          {editable && showAddButton ? (
+            <Button onClick={() => setModalOpen(true)}>
+              <Plus className="size-4" />
+              Add Event
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {interactiveSortable ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={({ active, over }) => {
+            if (!over || active.id === over.id) return;
+            const oldIndex = items.findIndex((item) => item.id === active.id);
+            const newIndex = items.findIndex((item) => item.id === over.id);
+            const reordered = arrayMove(items, oldIndex, newIndex).map((item, index) => ({
+              ...item,
+              sortOrder: index + 1,
+            }));
+            setItems(reordered);
+            void persistOrder(reordered);
+          }}
+        >
+          <SortableContext
+            items={items.map((item) => item.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-4">
+              {items.map((event) => (
+                <div key={event.id}>
+                  <SortableEvent
+                    event={event}
+                    date={date}
+                    sortable
+                    onOpen={
+                      editable
+                        ? () => {
+                            setSelectedEvent(event);
+                            setModalOpen(true);
+                          }
+                        : undefined
+                    }
+                    onEdit={
+                      editable
+                        ? () => {
+                            setSelectedEvent(event);
+                            setModalOpen(true);
+                          }
+                        : undefined
+                    }
+                    onDelete={editable ? () => setEventToDelete(event) : undefined}
+                  />
+                </div>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      ) : (
+        <div className="space-y-4">
+          {items.map((event) => (
+            <div key={event.id}>
+              <StaticEvent
+                event={event}
+                date={date}
+                onOpen={
+                  editable
+                    ? () => {
+                        setSelectedEvent(event);
+                        setModalOpen(true);
+                      }
+                    : undefined
+                }
+                onEdit={
+                  editable
+                    ? () => {
+                        setSelectedEvent(event);
+                        setModalOpen(true);
+                      }
+                    : undefined
+                }
+                onDelete={editable ? () => setEventToDelete(event) : undefined}
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       {editable ? (
         <>
           <EventModal
+            key={`day-${dayId}-${selectedEvent?.id ?? "new"}-${modalOpen ? "open" : "closed"}`}
             dayId={dayId}
             date={date}
             open={modalOpen}

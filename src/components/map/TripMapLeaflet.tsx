@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   MapContainer,
   Marker,
@@ -12,41 +13,106 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { getCategoryLeafletIcon } from "@/components/map/categoryLeafletIcon";
 import { getCategoryConfig } from "@/lib/category-config";
 import type { DaySummary } from "@/lib/types";
-import { formatDateMedium } from "@/lib/utils";
+import { formatDateMedium, formatTimeRange } from "@/lib/utils";
 
-function MapFlyTo({ center }: { center: [number, number] | null }) {
+function MapFlyTo({
+  center,
+  zoom,
+}: {
+  center: [number, number] | null;
+  zoom: number;
+}) {
   const map = useMap();
   useEffect(() => {
-    if (center) map.flyTo(center, Math.max(map.getZoom(), 8), { duration: 1 });
-  }, [center, map]);
+    if (center) map.flyTo(center, Math.max(map.getZoom(), zoom), { duration: 1 });
+  }, [center, map, zoom]);
   return null;
 }
 
 export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
+  const router = useRouter();
   const [filter, setFilter] = useState<number | "all">("all");
+  const [activeEventId, setActiveEventId] = useState<number | null>(null);
 
   const filteredDays = useMemo(
     () => days.filter((day) => filter === "all" || day.dayNumber === filter),
     [days, filter]
   );
 
-  const route = filteredDays
-    .map((day) => day.locations[0])
-    .filter(Boolean)
-    .map((location) => [Number(location.lat), Number(location.lng)] as [number, number]);
+  const filteredPins = useMemo(
+    () =>
+      filteredDays.flatMap((day) =>
+        day.events
+          .filter(
+            (event) =>
+              Boolean(event.location) &&
+              event.lat !== null &&
+              event.lng !== null
+          )
+          .map((event) => ({
+            ...event,
+            dayId: day.id,
+            dayNumber: day.dayNumber,
+            dayTitle: day.title,
+            dayDate: day.date,
+          }))
+      ),
+    [filteredDays]
+  );
 
-  const flyToCenter = useMemo<[number, number] | null>(() => {
-    if (filter === "all") return null;
+  const route = filteredDays
+    .map((day) =>
+      day.events.find(
+        (event) =>
+          Boolean(event.location) &&
+          event.lat !== null &&
+          event.lng !== null
+      )
+    )
+    .filter(
+      (event): event is NonNullable<typeof event> => Boolean(event)
+    )
+    .map((event) => [Number(event.lat), Number(event.lng)] as [number, number]);
+
+  const activePin = useMemo(
+    () => filteredPins.find((event) => event.id === activeEventId) ?? null,
+    [activeEventId, filteredPins]
+  );
+
+  const flyTarget = useMemo<{ center: [number, number] | null; zoom: number }>(() => {
+    if (activePin) {
+      return {
+        center: [Number(activePin.lat), Number(activePin.lng)],
+        zoom: 13,
+      };
+    }
+
+    if (filter === "all") {
+      return { center: null, zoom: 8 };
+    }
+
     const day = days.find((d) => d.dayNumber === filter);
-    const first = day?.locations[0];
-    if (!first) return null;
-    return [Number(first.lat), Number(first.lng)];
-  }, [filter, days]);
+    const first = day?.events.find(
+      (event) =>
+        Boolean(event.location) &&
+        event.lat !== null &&
+        event.lng !== null
+    );
+    if (!first) {
+      return { center: null, zoom: 8 };
+    }
+
+    return {
+      center: [Number(first.lat), Number(first.lng)],
+      zoom: 9,
+    };
+  }, [activePin, days, filter]);
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.9fr_1.4fr]">
+    <div className="grid gap-6 lg:grid-cols-[0.9fr_1.4fr]">
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 scrollbar-hide">
           <button
@@ -56,7 +122,10 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                 ? "border-primary/30 bg-primary/10 text-primary"
                 : "border-border/70 bg-card/70 text-muted-foreground"
             }`}
-            onClick={() => setFilter("all")}
+            onClick={() => {
+              setFilter("all");
+              setActiveEventId(null);
+            }}
           >
             All Days
           </button>
@@ -69,43 +138,84 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                   ? "border-primary/30 bg-primary/10 text-primary"
                   : "border-border/70 bg-card/70 text-muted-foreground"
               }`}
-              onClick={() => setFilter(day.dayNumber)}
+              onClick={() => {
+                setFilter(day.dayNumber);
+                setActiveEventId(null);
+              }}
+              onDoubleClick={() => router.push(`/days/${day.date}`)}
             >
               Day {day.dayNumber}
             </button>
           ))}
         </div>
 
-        <div className="space-y-3">
-          {filteredDays.map((day, index) => (
-            <Card key={day.id} className="rounded-[1.75rem] border border-border/70 bg-card/80">
-              <CardContent className="space-y-3 py-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.24em] text-primary/80">
-                      {formatDateMedium(day.date)}
-                    </p>
-                    <h3 className="text-lg font-semibold">{day.title}</h3>
-                  </div>
-                  <Badge className="bg-secondary/70 text-foreground">
-                    {day.location}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {day.driveInfo ?? "No drive summary available."}
+        <Card className="rounded-[1.75rem] border border-border/70 bg-card/85">
+          <CardContent className="space-y-4 py-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-primary/80">
+                  {filter === "all" ? "Visible Pins" : `Day ${filter} Pins`}
                 </p>
-                {index < filteredDays.length - 1 ? (
-                  <p className="text-xs text-muted-foreground">
-                    Next stop: {filteredDays[index + 1]?.location}
-                  </p>
-                ) : null}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                <h3 className="text-lg font-semibold">
+                  {filteredPins.length} location{filteredPins.length === 1 ? "" : "s"}
+                </h3>
+              </div>
+              <Badge className="bg-secondary/70 text-foreground">
+                {filter === "all" ? "Whole Trip" : `Day ${filter}`}
+              </Badge>
+            </div>
+
+            <div className="space-y-3">
+              {filteredPins.map((event) => {
+                const config = getCategoryConfig(event.category);
+                const isActive = event.id === activeEventId;
+                return (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => setActiveEventId(event.id)}
+                    className={`w-full rounded-[1.35rem] border p-4 text-left transition ${
+                      isActive
+                        ? "border-primary/40 bg-primary/10 shadow-[0_14px_30px_rgba(255,139,94,0.14)]"
+                        : "border-border/70 bg-white hover:border-primary/25 hover:bg-secondary/55"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium">{event.title}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                          Day {event.dayNumber} · {formatDateMedium(event.dayDate)}
+                        </p>
+                      </div>
+                      <Badge className="shrink-0 bg-secondary text-foreground">
+                        {config.label}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {event.location}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {formatTimeRange(event.startTime, event.endTime)}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">{event.dayTitle}</p>
+                    {event.tip ? (
+                      <p className="mt-2 text-sm text-muted-foreground">{event.tip}</p>
+                    ) : null}
+                  </button>
+                );
+              })}
+
+              {filteredPins.length === 0 ? (
+                <div className="rounded-[1.35rem] border border-dashed border-border/80 bg-secondary/35 p-4 text-sm text-muted-foreground">
+                  No mapped locations are available for this selection yet.
+                </div>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="overflow-hidden rounded-[2rem] border border-border/70">
+      <div className="rounded-[2rem] border border-border/70 lg:sticky lg:top-6 lg:self-start overflow-clip">
         <MapContainer
           center={route[0] ?? [36.1699, -115.1398]}
           zoom={5}
@@ -116,17 +226,22 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <MapFlyTo center={flyToCenter} />
+          <MapFlyTo center={flyTarget.center} zoom={flyTarget.zoom} />
 
           {route.length > 1 ? (
             <Polyline positions={route} color="#f59e0b" weight={2} opacity={0.75} />
           ) : null}
 
           {filteredDays.map((day) => {
-            const hikeLocations = day.locations.filter((loc) => loc.type === "hike");
-            if (hikeLocations.length < 2) return null;
-            const positions = hikeLocations.map(
-              (loc) => [Number(loc.lat), Number(loc.lng)] as [number, number]
+            const hikeEvents = day.events.filter(
+              (event) =>
+                event.category === "hike" &&
+                event.lat !== null &&
+                event.lng !== null
+            );
+            if (hikeEvents.length < 2) return null;
+            const positions = hikeEvents.map(
+              (event) => [Number(event.lat), Number(event.lng)] as [number, number]
             );
             return (
               <Polyline
@@ -141,22 +256,25 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                   <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
                     Day {day.dayNumber} Hikes
                   </p>
-                  {hikeLocations.map((loc, i) => (
+                  {hikeEvents.map((event, i) => (
                     <div
-                      key={loc.id}
-                      style={{ marginBottom: i < hikeLocations.length - 1 ? 10 : 0 }}
+                      key={event.id}
+                      style={{ marginBottom: i < hikeEvents.length - 1 ? 10 : 0 }}
                     >
                       <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>
-                        🥾 {loc.name}
+                        🥾 {event.title}
                       </p>
-                      {loc.description ? (
+                      <p style={{ fontSize: 12, color: "#666", marginBottom: 2 }}>
+                        {formatTimeRange(event.startTime, event.endTime)}
+                      </p>
+                      {event.description ? (
                         <p style={{ fontSize: 12, color: "#555", marginBottom: 2 }}>
-                          {loc.description}
+                          {event.description}
                         </p>
                       ) : null}
-                      {loc.tip ? (
+                      {event.tip ? (
                         <p style={{ fontSize: 11, color: "#888", fontStyle: "italic" }}>
-                          {loc.tip}
+                          {event.tip}
                         </p>
                       ) : null}
                     </div>
@@ -167,14 +285,25 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
           })}
 
           {filteredDays.map((day) =>
-            day.locations.map((location) => (
+            day.events
+              .filter(
+                (event) =>
+                  Boolean(event.location) &&
+                  event.lat !== null &&
+                  event.lng !== null
+              )
+              .map((event) => (
               <Marker
-                key={location.id}
-                position={[Number(location.lat), Number(location.lng)]}
+                key={event.id}
+                icon={getCategoryLeafletIcon(event.category)}
+                position={[Number(event.lat), Number(event.lng)]}
+                eventHandlers={{
+                  click: () => setActiveEventId(event.id),
+                }}
               >
                 <Popup minWidth={160} maxWidth={240}>
                   <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
-                    {location.name}
+                    {event.title}
                   </p>
                   <p
                     style={{
@@ -185,19 +314,32 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                       marginBottom: 6,
                     }}
                   >
-                    {getCategoryConfig(location.type).label}
+                    {getCategoryConfig(event.category).label}
                   </p>
-                  {location.description ? (
-                    <p style={{ fontSize: 13, marginBottom: 4 }}>{location.description}</p>
+                  <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
+                    {formatTimeRange(event.startTime, event.endTime)}
+                  </p>
+                  {event.location ? (
+                    <p style={{ fontSize: 13, marginBottom: 4 }}>{event.location}</p>
                   ) : null}
-                  {location.tip ? (
-                    <p style={{ fontSize: 12, color: "#666", fontStyle: "italic", marginBottom: 4 }}>
-                      {location.tip}
+                  {event.description ? (
+                    <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
+                      {event.description}
                     </p>
                   ) : null}
-                  {location.googleMapsUrl ? (
+                  {event.tip ? (
+                    <p style={{ fontSize: 12, color: "#666", fontStyle: "italic", marginBottom: 4 }}>
+                      {event.tip}
+                    </p>
+                  ) : null}
+                  {day.title ? (
+                    <p style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+                      Day {day.dayNumber}: {day.title}
+                    </p>
+                  ) : null}
+                  {event.location ? (
                     <a
-                      href={location.googleMapsUrl}
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`}
                       target="_blank"
                       rel="noreferrer"
                       style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}

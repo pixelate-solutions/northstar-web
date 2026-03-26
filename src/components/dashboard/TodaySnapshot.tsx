@@ -21,6 +21,7 @@ export function TodaySnapshot({ day }: TodaySnapshotProps) {
           }
           alt={day.title}
           fill
+          sizes="(max-width: 1280px) 100vw, 60vw"
           className="object-cover"
           priority
         />
@@ -32,7 +33,7 @@ export function TodaySnapshot({ day }: TodaySnapshotProps) {
           <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
             {day.title}
           </h2>
-          <div className="mt-3 flex flex-wrap gap-3 text-sm text-white">
+          <div className="mt-3 flex flex-wrap gap-3 text-sm text-black">
             <span className="inline-flex items-center gap-2">
               <MapPin className="size-4 text-primary" />
               {day.location}

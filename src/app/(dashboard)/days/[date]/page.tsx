@@ -1,45 +1,50 @@
-import nextDynamic from "next/dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ExternalLink, UtensilsCrossed } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, UtensilsCrossed } from "lucide-react";
 
 import { DayNotesEditor } from "@/components/dashboard/DayNotesEditor";
 import { DaySchedule } from "@/components/schedule/DaySchedule";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WeatherChip } from "@/components/shared/WeatherChip";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buildMetadata } from "@/lib/metadata";
-import { getDayByDate, getPackingItems } from "@/lib/server-data";
+import { getDayByDate, getDaysOverview, getPackingItems } from "@/lib/server-data";
 import { formatCurrency, formatDate, formatTimeRange } from "@/lib/utils";
-
-const DayMap = nextDynamic(
-  () => import("@/components/map/DayMap").then((mod) => mod.DayMap),
-  { ssr: false }
-);
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,
 }: {
-  params: { date: string };
+  params: Promise<{ date: string }>;
 }) {
-  const day = await getDayByDate(params.date);
+  const { date } = await params;
+  const day = await getDayByDate(date);
   return buildMetadata(day ? day.title : "Day Detail");
 }
 
 export default async function DayDetailPage({
   params,
 }: {
-  params: { date: string };
+  params: Promise<{ date: string }>;
 }) {
-  const [day, packingItems] = await Promise.all([
-    getDayByDate(params.date),
+  const { date } = await params;
+  const [day, packingItems, allDays] = await Promise.all([
+    getDayByDate(date),
     getPackingItems(),
+    getDaysOverview(),
   ]);
 
   if (!day) notFound();
+
+  const currentDayIndex = allDays.findIndex((item) => item.date === day.date);
+  const previousDay = currentDayIndex > 0 ? allDays[currentDayIndex - 1] : null;
+  const nextDay =
+    currentDayIndex >= 0 && currentDayIndex < allDays.length - 1
+      ? allDays[currentDayIndex + 1]
+      : null;
 
   const foodEvents = day.events.filter((event) => event.category === "food");
   const dayPackingItems = packingItems.filter(
@@ -60,7 +65,37 @@ export default async function DayDetailPage({
         eyebrow={`Day ${day.dayNumber}`}
         title={day.title}
         description={`${day.location} · ${day.sleepLocation ?? "Stay TBD"}`}
-        actions={<WeatherChip location={day.location} />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {previousDay ? (
+              <Link href={`/days/${previousDay.date}`}>
+                <Button variant="outline">
+                  <ChevronLeft className="size-4" />
+                  Previous
+                </Button>
+              </Link>
+            ) : (
+              <Button variant="outline" disabled>
+                <ChevronLeft className="size-4" />
+                Previous
+              </Button>
+            )}
+            {nextDay ? (
+              <Link href={`/days/${nextDay.date}`}>
+                <Button variant="outline">
+                  Next
+                  <ChevronRight className="size-4" />
+                </Button>
+              </Link>
+            ) : (
+              <Button variant="outline" disabled>
+                Next
+                <ChevronRight className="size-4" />
+              </Button>
+            )}
+            <WeatherChip location={day.location} />
+          </div>
+        }
       />
 
       <div className="grid gap-6 xl:grid-cols-[1.45fr_0.85fr]">
@@ -108,15 +143,6 @@ export default async function DayDetailPage({
             sortable
             title="Sortable Schedule"
           />
-
-          <Card className="rounded-[2rem] border border-border/70 bg-card/80">
-            <CardHeader>
-              <CardTitle>Day Map</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <DayMap locations={day.locations} />
-            </CardContent>
-          </Card>
         </div>
 
         <div className="space-y-6">

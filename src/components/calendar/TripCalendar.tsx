@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import {
   Calendar,
   dateFnsLocalizer,
@@ -44,19 +44,32 @@ type TripCalendarEvent = CalendarEvent & {
   };
 };
 
+function subscribeToViewport(onChange: () => void) {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+
+  window.addEventListener("resize", onChange);
+  return () => window.removeEventListener("resize", onChange);
+}
+
+function getIsMobileViewport() {
+  return typeof window !== "undefined" && window.innerWidth < 640;
+}
+
 export function TripCalendar({ days }: { days: DaySummary[] }) {
   const router = useRouter();
+  const isMobileViewport = useSyncExternalStore(
+    subscribeToViewport,
+    getIsMobileViewport,
+    () => false
+  );
   const [selectedDayId, setSelectedDayId] = useState(days[0]?.id ?? 1);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<TripCalendarEvent | null>(null);
-  const [view, setView] = useState<View>("month");
+  const [desktopView, setDesktopView] = useState<View>("month");
   const [calendarDate, setCalendarDate] = useState(new Date("2026-04-08T00:00:00"));
-
-  useEffect(() => {
-    if (window.innerWidth < 640) {
-      setView("agenda");
-    }
-  }, []);
+  const view = isMobileViewport ? "agenda" : desktopView;
 
   const calendarEvents = useMemo<TripCalendarEvent[]>(
     () =>
@@ -90,6 +103,7 @@ export function TripCalendar({ days }: { days: DaySummary[] }) {
               onClick={() => {
                 setSelectedDayId(day.id);
               }}
+              onDoubleClick={() => router.push(`/days/${day.date}`)}
               className={`rounded-full border px-4 py-2 text-sm ${
                 day.id === selectedDayId
                   ? "border-primary/30 bg-primary/10 text-primary"
@@ -119,7 +133,11 @@ export function TripCalendar({ days }: { days: DaySummary[] }) {
             endAccessor="end"
             titleAccessor={(event) => String(event.title ?? "")}
             view={view}
-            onView={(nextView) => setView(nextView)}
+            onView={(nextView) => {
+              if (!isMobileViewport) {
+                setDesktopView(nextView);
+              }
+            }}
             selectable
             popup
             showAllEvents
@@ -210,6 +228,7 @@ export function TripCalendar({ days }: { days: DaySummary[] }) {
       </div>
 
       <EventModal
+        key={`calendar-${selectedDayId}-${modalOpen ? "open" : "closed"}`}
         dayId={selectedDayId}
         date={selectedDay?.date}
         open={modalOpen}

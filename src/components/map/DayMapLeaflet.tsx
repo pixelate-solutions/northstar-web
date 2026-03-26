@@ -11,6 +11,7 @@ import {
 } from "react-leaflet";
 
 import { Badge } from "@/components/ui/badge";
+import { getCategoryLeafletIcon } from "@/components/map/categoryLeafletIcon";
 import type { Location } from "@/db/schema";
 import { getCategoryConfig } from "@/lib/category-config";
 
@@ -101,6 +102,7 @@ export function DayMapLeaflet({ locations }: { locations: Location[] }) {
           {locations.map((location) => (
             <Marker
               key={location.id}
+              icon={getCategoryLeafletIcon(location.type)}
               position={[Number(location.lat), Number(location.lng)]}
               eventHandlers={{ click: () => setActiveId(location.id) }}
             >

@@ -8,7 +8,7 @@ import { packingItemSchema } from "@/lib/validation";
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const db = getDb();
   if (!db) {
@@ -19,10 +19,11 @@ export async function PUT(
   }
 
   const payload = packingItemSchema.partial().parse(await request.json());
+  const { id } = await params;
   const [updated] = await db
     .update(packingItems)
     .set(payload)
-    .where(eq(packingItems.id, Number(params.id)))
+    .where(eq(packingItems.id, Number(id)))
     .returning();
   revalidatePath("/", "layout");
   revalidatePath("/packing");
@@ -31,7 +32,7 @@ export async function PUT(
 
 export async function DELETE(
   _request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const db = getDb();
   if (!db) {
@@ -41,7 +42,8 @@ export async function DELETE(
     );
   }
 
-  await db.delete(packingItems).where(eq(packingItems.id, Number(params.id)));
+  const { id } = await params;
+  await db.delete(packingItems).where(eq(packingItems.id, Number(id)));
   revalidatePath("/", "layout");
   revalidatePath("/packing");
   return NextResponse.json({ success: true });

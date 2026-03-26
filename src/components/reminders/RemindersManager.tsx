@@ -157,6 +157,7 @@ export function RemindersManager({
       ))}
 
       <ReminderForm
+        key={`${editingReminder?.id ?? "new"}-${modalOpen ? "open" : "closed"}`}
         open={modalOpen}
         onOpenChange={(open) => {
           setModalOpen(open);

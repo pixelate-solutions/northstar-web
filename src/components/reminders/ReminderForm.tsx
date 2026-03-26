@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +26,19 @@ const emptyReminderForm = {
   isDone: false,
 };
 
+function getReminderForm(reminder: Reminder | null) {
+  return reminder
+    ? {
+        title: reminder.title,
+        body: reminder.body ?? "",
+        dueDate: reminder.dueDate ?? "",
+        priority: reminder.priority,
+        dayId: reminder.dayId ? String(reminder.dayId) : "",
+        isDone: reminder.isDone ?? false,
+      }
+    : emptyReminderForm;
+}
+
 export function ReminderForm({
   open,
   onOpenChange,
@@ -38,26 +52,11 @@ export function ReminderForm({
   days: DaySummary[];
   onSubmit: (payload: Record<string, unknown>) => void;
 }) {
-  const [form, setForm] = useState(emptyReminderForm);
-
-  useEffect(() => {
-    setForm(
-      reminder
-        ? {
-            title: reminder.title,
-            body: reminder.body ?? "",
-            dueDate: reminder.dueDate ?? "",
-            priority: reminder.priority,
-            dayId: reminder.dayId ? String(reminder.dayId) : "",
-            isDone: reminder.isDone ?? false,
-          }
-        : emptyReminderForm
-    );
-  }, [open, reminder]);
+  const [form, setForm] = useState(() => getReminderForm(reminder));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg bg-card">
+      <DialogContent className="max-w-lg bg-card p-8">
         <DialogHeader>
           <DialogTitle>{reminder ? "Edit Reminder" : "Add Reminder"}</DialogTitle>
         </DialogHeader>
@@ -91,11 +90,10 @@ export function ReminderForm({
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="grid gap-2">
               <Label htmlFor="reminder-date">Due Date</Label>
-              <Input
+              <DatePicker
                 id="reminder-date"
-                type="date"
                 value={form.dueDate}
-                onChange={(event) => setForm({ ...form, dueDate: event.target.value })}
+                onChange={(value) => setForm({ ...form, dueDate: value })}
               />
             </div>
             <div className="grid gap-2">
@@ -136,7 +134,7 @@ export function ReminderForm({
             />
             Completed
           </label>
-          <DialogFooter className="gap-2 bg-transparent p-0">
+          <DialogFooter className="gap-2 bg-transparent p-0 pt-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>

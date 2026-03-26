@@ -2,6 +2,7 @@ import { differenceInCalendarDays } from "date-fns";
 
 import { MobileHeader } from "@/components/nav/MobileHeader";
 import { Sidebar } from "@/components/nav/Sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { getDashboardBundle } from "@/lib/server-data";
 import { TRIP_END, TRIP_START } from "@/lib/trip-data";
 
@@ -43,19 +44,23 @@ export default async function DashboardLayout({
   const totalBadge = unpackedCount + overdueCount + unpaidCount;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="absolute inset-x-0 top-0 -z-10 h-[32rem] bg-[radial-gradient(circle_at_top,rgba(245,158,11,0.20),transparent_45%),radial-gradient(circle_at_top_right,rgba(234,88,12,0.12),transparent_35%),linear-gradient(180deg,#fffaf3_0%,#f8f3ea_72%)]" />
-      <MobileHeader countdownLabel={countdownLabel} totalBadge={totalBadge} />
-      <div className="mx-auto flex min-h-screen max-w-[1600px]">
-        <Sidebar
-          packingPercent={packingPercent}
-          totalBooked={totalBooked}
-          countdownLabel={countdownLabel}
-        />
-        <main className="min-w-0 flex-1 overflow-x-hidden px-4 pb-8 pt-16 sm:px-6 lg:px-10 lg:pb-8 lg:pt-6">
-          {children}
-        </main>
+    <SidebarProvider>
+      <div className="relative isolate min-h-screen bg-transparent text-foreground">
+        <div className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[44rem] bg-[radial-gradient(circle_at_top_left,rgba(238,195,154,0.26),transparent_26%),radial-gradient(circle_at_22%_8%,rgba(177,209,223,0.24),transparent_22%),radial-gradient(circle_at_top_right,rgba(225,190,140,0.18),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.72)_0%,rgba(250,246,239,0.76)_52%,rgba(255,252,247,0.7)_100%)]" />
+        <MobileHeader countdownLabel={countdownLabel} totalBadge={totalBadge} />
+        <div className="mx-auto flex min-h-screen max-w-[1600px] lg:my-5 lg:min-h-[calc(100vh-2.5rem)] lg:max-w-[calc(100%-2.5rem)]">
+          <Sidebar
+            packingPercent={packingPercent}
+            totalBooked={totalBooked}
+            countdownLabel={countdownLabel}
+          />
+          <div className="min-w-0 flex-1 lg:rounded-[2.75rem] lg:border lg:border-white/40 lg:bg-white/18 lg:p-2 lg:shadow-[0_32px_110px_rgba(118,123,184,0.18),inset_0_1px_0_rgba(255,255,255,0.65)] lg:backdrop-blur-2xl">
+            <main className="min-w-0 [overflow-x:clip] px-4 pb-8 pt-16 sm:px-6 lg:px-8 lg:pb-8 lg:pt-6">
+              {children}
+            </main>
+          </div>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }

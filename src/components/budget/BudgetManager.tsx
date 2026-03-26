@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import { ExpenseTable } from "@/components/budget/ExpenseTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,21 @@ const emptyExpenseForm = {
   notes: "",
   receiptUrl: "",
 };
+
+function getExpenseForm(expense: Expense | null) {
+  return expense
+    ? {
+        description: expense.description,
+        category: expense.category,
+        amount: String(expense.amount ?? 0),
+        isBooked: expense.isBooked ?? false,
+        isPaid: expense.isPaid ?? false,
+        purchaseDate: expense.purchaseDate ?? "",
+        notes: expense.notes ?? "",
+        receiptUrl: expense.receiptUrl ?? "",
+      }
+    : emptyExpenseForm;
+}
 
 export function BudgetManager({ initialExpenses }: { initialExpenses: Expense[] }) {
   const router = useRouter();
@@ -173,6 +189,7 @@ export function BudgetManager({ initialExpenses }: { initialExpenses: Expense[] 
       )}
 
       <ExpenseDialog
+        key={`${editingExpense?.id ?? "new"}-${modalOpen ? "open" : "closed"}`}
         open={modalOpen}
         onOpenChange={(open) => {
           setModalOpen(open);
@@ -205,24 +222,7 @@ function ExpenseDialog({
   expense: Expense | null;
   onSubmit: (payload: Record<string, unknown>) => void;
 }) {
-  const [form, setForm] = useState(emptyExpenseForm);
-
-  useEffect(() => {
-    setForm(
-      expense
-        ? {
-            description: expense.description,
-            category: expense.category,
-            amount: String(expense.amount ?? 0),
-            isBooked: expense.isBooked ?? false,
-            isPaid: expense.isPaid ?? false,
-            purchaseDate: expense.purchaseDate ?? "",
-            notes: expense.notes ?? "",
-            receiptUrl: expense.receiptUrl ?? "",
-          }
-        : emptyExpenseForm
-    );
-  }, [expense, open]);
+  const [form, setForm] = useState(() => getExpenseForm(expense));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -265,11 +265,10 @@ function ExpenseDialog({
           </div>
           <div className="grid gap-2">
             <Label htmlFor="expense-date">Purchase Date</Label>
-            <Input
+            <DatePicker
               id="expense-date"
-              type="date"
               value={form.purchaseDate}
-              onChange={(event) => setForm({ ...form, purchaseDate: event.target.value })}
+              onChange={(value) => setForm({ ...form, purchaseDate: value })}
             />
           </div>
           <div className="grid gap-2">

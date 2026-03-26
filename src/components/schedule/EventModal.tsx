@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { Event } from "@/db/schema";
 import { CATEGORIES, getCategoryConfig } from "@/lib/category-config";
 import { formatTime } from "@/lib/utils";
@@ -304,9 +305,26 @@ const formSchema = z.object({
   location: z.string().optional(),
   lat: z.string().optional(),
   lng: z.string().optional(),
+  tip: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
+
+function getEventFormDefaults(event?: Event | null): FormValues {
+  return {
+    title: event?.title ?? "",
+    category: event?.category ?? "other",
+    startTime: toDisplayTime(event?.startTime),
+    endTime:
+      toHHMM(event?.endTime) === "09:00" && !event
+        ? "10:00 AM"
+        : toDisplayTime(event?.endTime),
+    location: event?.location ?? "",
+    lat: event?.lat ?? "",
+    lng: event?.lng ?? "",
+    tip: event?.tip ?? "",
+  };
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -329,46 +347,18 @@ export function EventModal({
   nextSortOrder = 0,
   onSaved,
 }: EventModalProps) {
-  const [locationMode, setLocationMode] = useState<"address" | "coords">("address");
+  const [locationMode, setLocationMode] = useState<"address" | "coords">(() =>
+    event?.lat && event?.lng ? "coords" : "address"
+  );
   // Geocoded coords from autocomplete selection — saved alongside address text
-  const [geocodedCoords, setGeocodedCoords] = useState<{ lat: string; lng: string } | null>(null);
+  const [geocodedCoords, setGeocodedCoords] = useState<{ lat: string; lng: string } | null>(
+    null
+  );
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      title: "",
-      category: "other",
-      startTime: "9:00 AM",
-      endTime: "10:00 AM",
-      location: "",
-      lat: "",
-      lng: "",
-    },
+    defaultValues: getEventFormDefaults(event),
   });
-
-  useEffect(() => {
-    if (!open) return;
-    const hasCoords = !!(event?.lat && event?.lng);
-    setLocationMode(hasCoords ? "coords" : "address");
-    // If existing event has both address and coords, keep the geocoded coords
-    setGeocodedCoords(
-      !hasCoords && event?.lat && event?.lng
-        ? { lat: event.lat, lng: event.lng }
-        : null
-    );
-    form.reset({
-      title: event?.title ?? "",
-      category: event?.category ?? "other",
-      startTime: toDisplayTime(event?.startTime),
-      endTime:
-        toHHMM(event?.endTime) === "09:00" && !event
-          ? "10:00 AM"
-          : toDisplayTime(event?.endTime),
-      location: event?.location ?? "",
-      lat: event?.lat ?? "",
-      lng: event?.lng ?? "",
-    });
-  }, [open, event, form]);
 
   async function onSubmit(data: FormValues) {
     const normalizedStartTime = normalizeTimeValue(data.startTime);
@@ -403,7 +393,7 @@ export function EventModal({
       location: locationMode === "address" ? (data.location ?? "") : "",
       lat: locationMode === "coords" ? (data.lat ?? null) : (usingGeocode ? geocodedCoords.lat : null),
       lng: locationMode === "coords" ? (data.lng ?? null) : (usingGeocode ? geocodedCoords.lng : null),
-      tip: event?.tip ?? "",
+      tip: data.tip ?? "",
       cost: event?.cost ?? "",
       isBooked: event?.isBooked ?? false,
       sortOrder: event?.sortOrder ?? nextSortOrder,
@@ -429,7 +419,10 @@ export function EventModal({
     onSaved?.();
   }
 
-  const locationValue = form.watch("location") ?? "";
+  const locationValue = useWatch({
+    control: form.control,
+    name: "location",
+  }) ?? "";
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md bg-card p-4 sm:p-7 max-h-[90dvh] overflow-y-auto">
@@ -617,6 +610,16 @@ export function EventModal({
                 <Input placeholder="Longitude" {...form.register("lng")} />
               </div>
             )}
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="ev-tip">Notes</Label>
+            <Textarea
+              id="ev-tip"
+              rows={3}
+              placeholder="Add anything useful to remember for this event."
+              {...form.register("tip")}
+            />
           </div>
 
           <DialogFooter className="gap-2 bg-transparent p-0 pt-1">
