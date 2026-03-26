@@ -15,10 +15,9 @@ import { cn } from "@/lib/utils";
 
 interface MobileHeaderProps {
   countdownLabel: string;
-  totalBadge?: number;
 }
 
-export function MobileHeader({ countdownLabel, totalBadge = 0 }: MobileHeaderProps) {
+export function MobileHeader({ countdownLabel }: MobileHeaderProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -32,11 +31,6 @@ export function MobileHeader({ countdownLabel, totalBadge = 0 }: MobileHeaderPro
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger className="relative rounded-2xl border border-white/50 bg-white/46 p-2 shadow-[0_10px_24px_rgba(191,102,62,0.10)] backdrop-blur-xl">
           <Menu className="size-5" />
-          {totalBadge > 0 ? (
-            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
-              {totalBadge > 99 ? "99+" : totalBadge}
-            </span>
-          ) : null}
         </SheetTrigger>
         <SheetContent side="left" className="w-72 overflow-y-auto border-white/45 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(249,244,236,0.92))] px-0 py-0 backdrop-blur-2xl">
           <div className="border-b border-white/45 px-5 pb-5 pt-14">
