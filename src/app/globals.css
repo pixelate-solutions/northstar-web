@@ -1,5 +1,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "leaflet/dist/leaflet.css";
+@import "react-big-calendar/lib/css/react-big-calendar.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,6 +9,13 @@
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }
 
@@ -16,79 +25,256 @@
     --font-sans: var(--font-sans);
   }
   :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
+    --background: #f8f3ea;
+    --foreground: #2d2418;
+    --card: #fffdf9;
+    --card-foreground: #2d2418;
+    --popover: #fffdf9;
+    --popover-foreground: #2d2418;
+    --primary: #f59e0b;
+    --primary-foreground: #fffdf9;
+    --secondary: #f2e9da;
+    --secondary-foreground: #2d2418;
+    --muted: #f4ede1;
+    --muted-foreground: #7a6a58;
+    --accent: #f59e0b;
+    --accent-foreground: #fffdf9;
+    --destructive: #ef4444;
+    --border: #e6d8c2;
+    --input: #efe4d1;
+    --ring: #f59e0b;
     --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
-  }
-  .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --sidebar: #fffaf2;
+    --sidebar-foreground: #2d2418;
+    --sidebar-primary: #f59e0b;
+    --sidebar-primary-foreground: #fffdf9;
+    --sidebar-accent: #f2e9da;
+    --sidebar-accent-foreground: #2d2418;
+    --sidebar-border: #e6d8c2;
+    --sidebar-ring: #f59e0b;
+    --chart-1: #f59e0b;
+    --chart-2: #ea580c;
+    --chart-3: #22c55e;
+    --chart-4: #3b82f6;
+    --chart-5: #a855f7;
   }
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
+    background-color: #f8f3ea;
+    color: #2d2418;
+    overflow-x: hidden;
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* Timeline connector line */
+.timeline-line {
+  position: absolute;
+  left: 1.25rem;
+  top: 2.5rem;
+  bottom: -0.5rem;
+  width: 2px;
+  background: linear-gradient(to bottom, #1e1e2e, transparent);
+  opacity: 0.35;
+}
+
+/* Gradient accent */
+.gradient-text {
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-bg {
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+}
+
+/* Map container */
+.leaflet-container {
+  background: #f7efe4 !important;
+}
+
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom,
+.leaflet-control {
+  z-index: 10 !important;
+}
+
+/* Custom scrollbar for webkit */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #f1e7d8;
+}
+::-webkit-scrollbar-thumb {
+  background: #d5c3a8;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b99b72;
+}
+
+.rbc-calendar {
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), sans-serif;
+}
+
+.trip-calendar {
+  border-radius: 1.5rem;
+  overflow: hidden;
+}
+
+.trip-calendar .rbc-toolbar {
+  margin-bottom: 1rem;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.trip-calendar .rbc-toolbar-label {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.trip-calendar .rbc-btn-group {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.trip-calendar .rbc-toolbar button {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  line-height: 1.1;
+  box-shadow: none;
+}
+
+.trip-calendar .rbc-toolbar button:hover,
+.trip-calendar .rbc-toolbar button:focus {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.trip-calendar .rbc-toolbar button.rbc-active {
+  background: color-mix(in srgb, var(--primary) 12%, white);
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  color: #a24d08;
+}
+
+.trip-calendar .rbc-month-view,
+.trip-calendar .rbc-time-view,
+.trip-calendar .rbc-agenda-view {
+  background: rgba(255, 253, 249, 0.75);
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+}
+
+.trip-calendar .rbc-header {
+  background: rgba(242, 233, 218, 0.7);
+  color: var(--foreground);
+  font-weight: 600;
+  padding: 0.9rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.trip-calendar .rbc-month-row + .rbc-month-row,
+.trip-calendar .rbc-day-bg + .rbc-day-bg,
+.trip-calendar .rbc-header + .rbc-header,
+.trip-calendar .rbc-time-header-content,
+.trip-calendar .rbc-time-content,
+.trip-calendar .rbc-time-content > * + * > *,
+.trip-calendar .rbc-timeslot-group,
+.trip-calendar .rbc-agenda-view table.rbc-agenda-table {
+  border-color: var(--border);
+}
+
+.trip-calendar .rbc-date-cell {
+  padding: 0.45rem 0.6rem;
+}
+
+.trip-calendar .rbc-date-cell a,
+.trip-calendar .rbc-button-link {
+  color: var(--foreground);
+}
+
+.trip-calendar .rbc-off-range-bg {
+  background: rgba(244, 237, 225, 0.75);
+}
+
+.trip-calendar .rbc-today {
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.trip-calendar .rbc-event,
+.trip-calendar .rbc-day-slot .rbc-background-event {
+  box-shadow: none;
+  padding: 0.2rem 0.45rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.trip-calendar .rbc-row-segment {
+  padding: 0 4px 4px;
+  min-width: 0;
+}
+
+.trip-calendar .rbc-event-content {
+  color: #fff;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trip-calendar .rbc-agenda-view table.rbc-agenda-table thead > tr > th {
+  background: rgba(242, 233, 218, 0.7);
+  color: var(--foreground);
+  border-bottom: 1px solid var(--border);
+  padding: 0.85rem;
+}
+
+.trip-calendar .rbc-agenda-view table.rbc-agenda-table tbody > tr > td {
+  padding: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.trip-calendar .rbc-current-time-indicator {
+  background-color: #ea580c;
+}
+
+@media (max-width: 640px) {
+  .trip-calendar .rbc-toolbar {
+    align-items: flex-start;
+  }
+
+  .trip-calendar .rbc-toolbar-label {
+    order: -1;
+    width: 100%;
+    margin-bottom: 0.25rem;
+  }
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
   }
 }
