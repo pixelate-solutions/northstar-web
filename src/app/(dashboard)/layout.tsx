@@ -21,14 +21,6 @@ export default async function DashboardLayout({
     countdownLabel = "Trip complete";
   }
 
-  const unpackedCount = bundle.packingItems.filter((item) => !Boolean(item.isPacked)).length;
-  const overdueCount = bundle.reminders.filter(
-    (item) =>
-      Boolean(item.dueDate) &&
-      !Boolean(item.isDone) &&
-      new Date(`${item.dueDate}T00:00:00`) < new Date()
-  ).length;
-  const unpaidCount = bundle.expenses.filter((item) => !Boolean(item.isPaid)).length;
   const totalBooked = bundle.expenses.reduce(
     (sum, expense) => sum + Number(expense.amount ?? 0),
     0
@@ -41,13 +33,11 @@ export default async function DashboardLayout({
       )
     : 0;
 
-  const totalBadge = unpackedCount + overdueCount + unpaidCount;
-
   return (
     <SidebarProvider>
       <div className="relative isolate min-h-screen bg-transparent text-foreground">
         <div className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[44rem] bg-[radial-gradient(circle_at_top_left,rgba(238,195,154,0.26),transparent_26%),radial-gradient(circle_at_22%_8%,rgba(177,209,223,0.24),transparent_22%),radial-gradient(circle_at_top_right,rgba(225,190,140,0.18),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.72)_0%,rgba(250,246,239,0.76)_52%,rgba(255,252,247,0.7)_100%)] [mask-image:linear-gradient(to_bottom,black_0%,black_74%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_74%,transparent_100%)]" />
-        <MobileHeader countdownLabel={countdownLabel} totalBadge={totalBadge} />
+        <MobileHeader countdownLabel={countdownLabel} />
         <div className="mx-auto flex min-h-screen max-w-[1600px] lg:my-5 lg:min-h-[calc(100vh-2.5rem)] lg:max-w-[calc(100%-2.5rem)]">
           <Sidebar
             packingPercent={packingPercent}

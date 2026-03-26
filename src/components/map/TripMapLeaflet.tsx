@@ -265,8 +265,8 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[0.9fr_1.4fr]">
-      <div className="space-y-4">
+    <div className="grid gap-6 lg:grid-cols-[0.9fr_1.4fr] max-lg:h-[calc(100dvh-12rem)] max-lg:min-h-[36rem] max-lg:overflow-hidden">
+      <div className="space-y-4 max-lg:min-h-0 max-lg:overflow-y-auto max-lg:pb-[20rem]">
         <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 scrollbar-hide">
           <button
             type="button"
@@ -442,12 +442,12 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
         </Card>
       </div>
 
-      <div className="rounded-[2rem] border border-border/70 lg:sticky lg:top-6 lg:self-start overflow-clip">
+      <div className="overflow-clip rounded-[2rem] border border-border/70 max-lg:fixed max-lg:bottom-4 max-lg:left-4 max-lg:right-4 max-lg:z-20 max-lg:border-white/55 max-lg:bg-white/72 max-lg:shadow-[0_26px_70px_rgba(28,31,46,0.18)] max-lg:backdrop-blur-2xl lg:sticky lg:top-6 lg:self-start">
         <MapContainer
           center={route[0] ?? [36.1699, -115.1398]}
           zoom={5}
           scrollWheelZoom
-          className="h-64 w-full sm:h-[32rem] lg:h-[42rem]"
+          className="h-[17rem] w-full sm:h-[21rem] lg:h-[42rem]"
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
