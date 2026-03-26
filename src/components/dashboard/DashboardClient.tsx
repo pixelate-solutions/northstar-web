@@ -102,7 +102,7 @@ export function DashboardClient({
     <div className="space-y-6">
       <PageHeader
         eyebrow="Trip Companion"
-        title="Today View"
+        title="Overview"
         description="Live schedule, countdown, and quick planning stats for the full Southwest loop."
         actions={
           <Link href={`/days/${selectedDay.date}`}>
