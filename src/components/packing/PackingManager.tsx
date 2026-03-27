@@ -245,7 +245,7 @@ export function PackingManager({
               key={day.id}
               type="button"
               onClick={() => setDayFilter(String(day.id))}
-              onDoubleClick={() => router.push(`/days/${day.date}`)}
+              onDoubleClick={() => router.push(`/app/days/${day.date}`)}
               className={`rounded-full border px-4 py-2 text-sm ${
                 dayFilter === String(day.id)
                   ? "border-primary/30 bg-primary/10 text-primary"

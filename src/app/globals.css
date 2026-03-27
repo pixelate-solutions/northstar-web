@@ -24,38 +24,38 @@
   }
   :root {
     /* RGB channel values — required for Tailwind opacity modifiers (bg-primary/10 etc.) */
-    --background: 248 245 239;
-    --foreground: 28 31 46;
+    --background: 247 251 252;
+    --foreground: 15 23 42;
     --card: 255 255 255;
-    --card-foreground: 28 31 46;
+    --card-foreground: 15 23 42;
     --popover: 255 255 255;
-    --popover-foreground: 28 31 46;
-    --primary: 191 102 62;
+    --popover-foreground: 15 23 42;
+    --primary: 22 78 128;
     --primary-foreground: 255 255 255;
-    --secondary: 248 242 232;
-    --secondary-foreground: 28 31 46;
-    --muted: 243 236 226;
-    --muted-foreground: 125 114 98;
-    --accent: 226 174 94;
+    --secondary: 239 247 248;
+    --secondary-foreground: 15 23 42;
+    --muted: 237 244 246;
+    --muted-foreground: 92 108 128;
+    --accent: 17 148 136;
     --accent-foreground: 255 255 255;
     --destructive: 239 68 68;
-    --border: 228 216 198;
-    --input: 234 223 208;
-    --ring: 191 102 62;
+    --border: 220 231 236;
+    --input: 226 237 241;
+    --ring: 22 78 128;
     --radius: 0.625rem;
     --sidebar: 255 255 255;
-    --sidebar-foreground: 28 31 46;
-    --sidebar-primary: 191 102 62;
+    --sidebar-foreground: 15 23 42;
+    --sidebar-primary: 22 78 128;
     --sidebar-primary-foreground: 255 255 255;
-    --sidebar-accent: 248 242 232;
-    --sidebar-accent-foreground: 28 31 46;
-    --sidebar-border: 228 216 198;
-    --sidebar-ring: 191 102 62;
-    --chart-1: 191 102 62;
-    --chart-2: 226 174 94;
-    --chart-3: 79 156 168;
-    --chart-4: 135 181 210;
-    --chart-5: 122 136 92;
+    --sidebar-accent: 239 247 248;
+    --sidebar-accent-foreground: 15 23 42;
+    --sidebar-border: 220 231 236;
+    --sidebar-ring: 22 78 128;
+    --chart-1: 22 78 128;
+    --chart-2: 17 148 136;
+    --chart-3: 83 140 186;
+    --chart-4: 148 213 211;
+    --chart-5: 125 143 164;
   }
   * {
     @apply border-border;
@@ -63,12 +63,12 @@
   body {
     @apply bg-background text-foreground;
     background:
-      radial-gradient(circle at 8% 12%, rgba(241, 197, 156, 0.34), transparent 24%),
-      radial-gradient(circle at 86% 8%, rgba(179, 214, 230, 0.28), transparent 26%),
-      radial-gradient(circle at 78% 70%, rgba(225, 191, 149, 0.20), transparent 22%),
-      radial-gradient(circle at 18% 82%, rgba(198, 219, 230, 0.16), transparent 24%),
-      linear-gradient(180deg, #faf7f2 0%, #fbf8f3 38%, #fffdfa 100%);
-    color: #1c1f2e;
+      radial-gradient(circle at 10% 14%, rgba(57, 116, 167, 0.18), transparent 24%),
+      radial-gradient(circle at 86% 10%, rgba(24, 167, 157, 0.18), transparent 24%),
+      radial-gradient(circle at 76% 74%, rgba(187, 234, 229, 0.24), transparent 22%),
+      radial-gradient(circle at 18% 84%, rgba(203, 227, 241, 0.28), transparent 22%),
+      linear-gradient(180deg, #f8fbfc 0%, #f4f8f9 40%, #fbfdfd 100%);
+    color: #0f172a;
     overflow-x: hidden;
   }
   body::before,
@@ -87,14 +87,14 @@
     right: 5vw;
     width: 18rem;
     height: 18rem;
-    background: radial-gradient(circle, rgba(235, 188, 143, 0.48), rgba(235, 188, 143, 0));
+    background: radial-gradient(circle, rgba(51, 123, 184, 0.26), rgba(51, 123, 184, 0));
   }
   body::after {
     left: 4vw;
     bottom: 4rem;
     width: 20rem;
     height: 20rem;
-    background: radial-gradient(circle, rgba(171, 207, 223, 0.38), rgba(171, 207, 223, 0));
+    background: radial-gradient(circle, rgba(61, 184, 174, 0.24), rgba(61, 184, 174, 0));
   }
   html {
     @apply font-sans;
@@ -108,20 +108,20 @@
   top: 2.5rem;
   bottom: -0.5rem;
   width: 2px;
-  background: linear-gradient(to bottom, rgba(191, 102, 62, 0.35), transparent);
+  background: linear-gradient(to bottom, rgba(22, 78, 128, 0.35), transparent);
   opacity: 0.55;
 }
 
 /* Gradient accent */
 .gradient-text {
-  background: linear-gradient(135deg, #bf663e, #e2ae5e 56%, #79a9bf);
+  background: linear-gradient(135deg, #164e80, #199a92 56%, #9ad6d2);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .gradient-bg {
-  background: linear-gradient(135deg, #bf663e, #e2ae5e 56%, #79a9bf);
+  background: linear-gradient(135deg, #164e80, #199a92 56%, #9ad6d2);
 }
 
 /* Map container */
@@ -208,7 +208,7 @@
 }
 
 .trip-calendar .rbc-toolbar button.rbc-active {
-  background: linear-gradient(135deg, rgba(191, 102, 62, 0.95), rgba(226, 174, 94, 0.95));
+  background: linear-gradient(135deg, rgba(22, 78, 128, 0.95), rgba(17, 148, 136, 0.95));
   border-color: rgba(255, 255, 255, 0.65);
   color: white;
 }

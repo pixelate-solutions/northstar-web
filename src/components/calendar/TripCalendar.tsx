@@ -122,7 +122,7 @@ export function TripCalendar({ days }: { days: DaySummary[] }) {
               onClick={() => {
                 setSelectedDayId(day.id);
               }}
-              onDoubleClick={() => router.push(`/days/${day.date}`)}
+              onDoubleClick={() => router.push(`/app/days/${day.date}`)}
               className={`rounded-full border px-4 py-2 text-sm ${
                 day.id === selectedDayId
                   ? "border-primary/30 bg-primary/10 text-primary"

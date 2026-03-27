@@ -1,10 +1,12 @@
 import type {
+  AppUser,
   Day,
   Event,
   Expense,
   Location,
   PackingItem,
   Reminder,
+  Trip,
 } from "@/db/schema";
 
 export interface DayWithDetails extends Day {
@@ -28,8 +30,16 @@ export interface DashboardStats {
 }
 
 export interface AppDataBundle {
+  trip: Trip;
   days: DaySummary[];
   packingItems: PackingItem[];
   expenses: Expense[];
   reminders: Reminder[];
+}
+
+export interface AppShellData {
+  appUser: AppUser;
+  trips: Trip[];
+  activeTrip: Trip;
+  bundle: AppDataBundle;
 }

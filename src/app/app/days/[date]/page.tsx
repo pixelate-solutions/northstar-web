@@ -10,7 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buildMetadata } from "@/lib/metadata";
+import { getCurrentAppUser } from "@/lib/auth";
 import { getDayByDate, getDaysOverview, getPackingItems } from "@/lib/server-data";
+import { ensureStarterTrip } from "@/lib/trips";
 import { formatCurrency, formatDate, formatTimeRange } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +22,14 @@ export async function generateMetadata({
 }: {
   params: Promise<{ date: string }>;
 }) {
+  const appUser = await getCurrentAppUser();
+  if (!appUser) {
+    return buildMetadata("Day Detail");
+  }
+
+  const trip = await ensureStarterTrip(appUser);
   const { date } = await params;
-  const day = await getDayByDate(date);
+  const day = trip ? await getDayByDate(trip.id, date) : null;
   return buildMetadata(day ? day.title : "Day Detail");
 }
 
@@ -30,11 +38,21 @@ export default async function DayDetailPage({
 }: {
   params: Promise<{ date: string }>;
 }) {
+  const appUser = await getCurrentAppUser();
+  if (!appUser) {
+    return null;
+  }
+
+  const trip = await ensureStarterTrip(appUser);
+  if (!trip) {
+    return null;
+  }
+
   const { date } = await params;
   const [day, packingItems, allDays] = await Promise.all([
-    getDayByDate(date),
-    getPackingItems(),
-    getDaysOverview(),
+    getDayByDate(trip.id, date),
+    getPackingItems(trip.id),
+    getDaysOverview(trip.id),
   ]);
 
   if (!day) notFound();
@@ -47,9 +65,7 @@ export default async function DayDetailPage({
       : null;
 
   const foodEvents = day.events.filter((event) => event.category === "food");
-  const dayPackingItems = packingItems.filter(
-    (item) => item.daySpecific === day.id
-  );
+  const dayPackingItems = packingItems.filter((item) => item.daySpecific === day.id);
   const totalEventCost = day.events.reduce(
     (sum, event) => sum + Number(event.cost ?? 0),
     0
@@ -68,7 +84,7 @@ export default async function DayDetailPage({
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {previousDay ? (
-              <Link href={`/days/${previousDay.date}`}>
+              <Link href={`/app/days/${previousDay.date}`}>
                 <Button variant="outline">
                   <ChevronLeft className="size-4" />
                   Previous
@@ -81,7 +97,7 @@ export default async function DayDetailPage({
               </Button>
             )}
             {nextDay ? (
-              <Link href={`/days/${nextDay.date}`}>
+              <Link href={`/app/days/${nextDay.date}`}>
                 <Button variant="outline">
                   Next
                   <ChevronRight className="size-4" />
@@ -107,9 +123,7 @@ export default async function DayDetailPage({
                 {day.sleepLocation ?? "Sleep TBD"}
               </Badge>
               {day.driveInfo ? (
-                <Badge className="bg-secondary/70 text-foreground">
-                  {day.driveInfo}
-                </Badge>
+                <Badge className="bg-secondary/70 text-foreground">{day.driveInfo}</Badge>
               ) : null}
             </div>
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
@@ -136,13 +150,7 @@ export default async function DayDetailPage({
             </div>
           </div>
 
-          <DaySchedule
-            dayId={day.id}
-            date={day.date}
-            events={day.events}
-            sortable
-            title="Sortable Schedule"
-          />
+          <DaySchedule dayId={day.id} date={day.date} events={day.events} sortable title="Sortable Schedule" />
         </div>
 
         <div className="space-y-6">
@@ -165,9 +173,7 @@ export default async function DayDetailPage({
                       {formatTimeRange(event.startTime, event.endTime)}
                     </p>
                     {event.location ? (
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {event.location}
-                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">{event.location}</p>
                     ) : null}
                   </div>
                 ))
@@ -219,9 +225,7 @@ export default async function DayDetailPage({
                     className="flex items-center justify-between rounded-2xl bg-secondary/40 px-4 py-3 text-sm"
                   >
                     <span>{item.name}</span>
-                    <Badge className="bg-secondary text-foreground">
-                      {item.quantity}x
-                    </Badge>
+                    <Badge className="bg-secondary text-foreground">{item.quantity}x</Badge>
                   </div>
                 ))
               ) : (

@@ -2,25 +2,55 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { getDb } from "@/db";
 import { events } from "@/db/schema";
+import { requireRouteTripContext } from "@/lib/route-auth";
 import { eventSchema } from "@/lib/validation";
+
+function revalidateAppPaths() {
+  revalidatePath("/app", "layout");
+  revalidatePath("/app/calendar");
+  revalidatePath("/app/days");
+  revalidatePath("/app/days/[date]", "page");
+}
+
+async function getOwnedEvent(eventId: number) {
+  const context = await requireRouteTripContext();
+  if ("error" in context) {
+    return context;
+  }
+
+  const event = await context.db.query.events.findFirst({
+    where: eq(events.id, eventId),
+    with: {
+      day: true,
+    },
+  });
+
+  if (!event || event.day.tripId !== context.activeTrip.id) {
+    return {
+      error: NextResponse.json({ error: "Event not found." }, { status: 404 }),
+    };
+  }
+
+  return {
+    ...context,
+    event,
+  };
+}
 
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const db = getDb();
-  if (!db) {
-    return NextResponse.json(
-      { error: "DATABASE_URL is required before events can be updated." },
-      { status: 503 }
-    );
+  const { id } = await params;
+  const eventId = Number(id);
+  const context = await getOwnedEvent(eventId);
+  if (!("event" in context)) {
+    return context.error;
   }
 
   const payload = eventSchema.parse(await request.json());
-  const { id } = await params;
-  const [updated] = await db
+  const [updated] = await context.db
     .update(events)
     .set({
       ...payload,
@@ -29,14 +59,10 @@ export async function PUT(
       lng: payload.lng === null ? null : String(payload.lng),
       updatedAt: new Date(),
     })
-    .where(eq(events.id, Number(id)))
+    .where(eq(events.id, eventId))
     .returning();
 
-  revalidatePath("/", "layout");
-  revalidatePath("/calendar");
-  revalidatePath("/days");
-  revalidatePath("/days/[date]", "page");
-
+  revalidateAppPaths();
   return NextResponse.json(updated);
 }
 
@@ -44,19 +70,14 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const db = getDb();
-  if (!db) {
-    return NextResponse.json(
-      { error: "DATABASE_URL is required before events can be deleted." },
-      { status: 503 }
-    );
+  const { id } = await params;
+  const eventId = Number(id);
+  const context = await getOwnedEvent(eventId);
+  if (!("event" in context)) {
+    return context.error;
   }
 
-  const { id } = await params;
-  await db.delete(events).where(eq(events.id, Number(id)));
-  revalidatePath("/", "layout");
-  revalidatePath("/calendar");
-  revalidatePath("/days");
-  revalidatePath("/days/[date]", "page");
+  await context.db.delete(events).where(eq(events.id, eventId));
+  revalidateAppPaths();
   return NextResponse.json({ success: true });
 }

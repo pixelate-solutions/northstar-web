@@ -32,8 +32,8 @@ export function MobileNav({
             (item.href !== "/" && pathname.startsWith(item.href));
 
           let badgeCount = 0;
-          if (item.href === "/packing") badgeCount = unpackedCount;
-          if (item.href === "/reminders") badgeCount = overdueCount + unpaidCount;
+          if (item.href === "/app/packing") badgeCount = unpackedCount;
+          if (item.href === "/app/reminders") badgeCount = overdueCount + unpaidCount;
 
           return (
             <Link

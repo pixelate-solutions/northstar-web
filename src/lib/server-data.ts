@@ -1,7 +1,7 @@
 import "server-only";
 
 import { unstable_noStore as noStore } from "next/cache";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { getDb, hasDatabaseUrl } from "@/db";
 import {
@@ -11,143 +11,107 @@ import {
   locations,
   packingItems,
   reminders,
+  trips,
 } from "@/db/schema";
-import {
-  DAY_IMAGES,
-  DAY_LOCATIONS,
-  DAY_TITLES,
-  TRIP_DATES,
-} from "@/lib/trip-data";
-import type { AppDataBundle, DaySummary, DayWithDetails } from "@/lib/types";
+import { getCurrentTripContext, getInfrastructureWarnings } from "@/lib/auth";
+import { ensureStarterTrip } from "@/lib/trips";
+import type { AppDataBundle, AppShellData, DaySummary, DayWithDetails } from "@/lib/types";
 
-const BROKEN_IMAGE_IDS = [
-  "photo-1558618047-3c8c76ca7d13",
-  "photo-1567604460652-9d5e55e6e4ee",
-];
-
-function resolveCoverImage(date: string, coverImageUrl: string | null) {
-  if (
-    !coverImageUrl ||
-    BROKEN_IMAGE_IDS.some((imageId) => coverImageUrl.includes(imageId))
-  ) {
-    return DAY_IMAGES[date] ?? null;
-  }
-
-  return coverImageUrl;
-}
-
-function buildFallbackDays(): DaySummary[] {
-  return TRIP_DATES.map((date, index) => ({
-    id: index + 1,
-    date,
-    dayNumber: index + 1,
-    title: DAY_TITLES[date] ?? `Day ${index + 1}`,
-    location: DAY_LOCATIONS[date] ?? "",
-    sleepLocation: null,
-    driveInfo: null,
-    notes: null,
-    coverImageUrl: DAY_IMAGES[date] ?? null,
-    events: [],
-    locations: [],
-    eventCount: 0,
-  }));
+function resolveCoverImage(coverImageUrl: string | null) {
+  return coverImageUrl || null;
 }
 
 export function isDatabaseConfigured() {
   return hasDatabaseUrl();
 }
 
-export async function getDaysOverview(): Promise<DaySummary[]> {
+export async function getDaysOverview(tripId: number): Promise<DaySummary[]> {
   noStore();
   const db = getDb();
-  if (!db) return buildFallbackDays();
+  if (!db) return [];
 
-  try {
-    const dayRows = await db.query.days.findMany({
-      with: {
-        events: {
-          orderBy: [asc(events.sortOrder), asc(events.startTime)],
-        },
-        locations: true,
+  const dayRows = await db.query.days.findMany({
+    where: eq(days.tripId, tripId),
+    with: {
+      events: {
+        orderBy: [asc(events.sortOrder), asc(events.startTime)],
       },
-      orderBy: [asc(days.date)],
-    });
+      locations: true,
+    },
+    orderBy: [asc(days.date)],
+  });
 
-    if (!dayRows.length) return buildFallbackDays();
-
-    return dayRows.map((day) => ({
-      ...day,
-      coverImageUrl: resolveCoverImage(day.date, day.coverImageUrl),
-      events: day.events,
-      locations: day.locations,
-      eventCount: day.events.length,
-    }));
-  } catch {
-    return buildFallbackDays();
-  }
+  return dayRows.map((day) => ({
+    ...day,
+    coverImageUrl: resolveCoverImage(day.coverImageUrl),
+    events: day.events,
+    locations: day.locations,
+    eventCount: day.events.length,
+  }));
 }
 
-export async function getDayByDate(date: string): Promise<DayWithDetails | null> {
+export async function getDayByDate(
+  tripId: number,
+  date: string
+): Promise<DayWithDetails | null> {
   noStore();
-  const fallback = buildFallbackDays().find((day) => day.date === date) ?? null;
   const db = getDb();
-  if (!db) return fallback;
+  if (!db) return null;
 
-  try {
-    const day = await db.query.days.findFirst({
-      where: eq(days.date, date),
-      with: {
-        events: {
-          orderBy: [asc(events.sortOrder), asc(events.startTime)],
-        },
-        locations: true,
+  const day = await db.query.days.findFirst({
+    where: and(eq(days.tripId, tripId), eq(days.date, date)),
+    with: {
+      events: {
+        orderBy: [asc(events.sortOrder), asc(events.startTime)],
       },
-    });
-    return day
-      ? {
-          ...day,
-          coverImageUrl: resolveCoverImage(day.date, day.coverImageUrl),
-        }
-      : fallback;
-  } catch {
-    return fallback;
+      locations: true,
+    },
+  });
+
+  if (!day) {
+    return null;
   }
+
+  return {
+    ...day,
+    coverImageUrl: resolveCoverImage(day.coverImageUrl),
+  };
 }
 
-export async function getPackingItems() {
+export async function getPackingItems(tripId: number) {
   noStore();
   const db = getDb();
   if (!db) return [];
 
-  try {
-    return await db.select().from(packingItems).orderBy(asc(packingItems.category), asc(packingItems.name));
-  } catch {
-    return [];
-  }
+  return db
+    .select()
+    .from(packingItems)
+    .where(eq(packingItems.tripId, tripId))
+    .orderBy(asc(packingItems.category), asc(packingItems.name));
 }
 
-export async function getExpenses() {
+export async function getExpenses(tripId: number) {
   noStore();
   const db = getDb();
   if (!db) return [];
 
-  try {
-    return await db.select().from(expenses).orderBy(asc(expenses.category), asc(expenses.description));
-  } catch {
-    return [];
-  }
+  return db
+    .select()
+    .from(expenses)
+    .where(eq(expenses.tripId, tripId))
+    .orderBy(asc(expenses.category), asc(expenses.description));
 }
 
-export async function getReminders() {
+export async function getReminders(tripId: number) {
   noStore();
   const db = getDb();
   if (!db) return [];
 
-  try {
-    return await db.select().from(reminders).orderBy(asc(reminders.dueDate), asc(reminders.title));
-  } catch {
-    return [];
-  }
+  return db
+    .select()
+    .from(reminders)
+    .where(eq(reminders.tripId, tripId))
+    .orderBy(asc(reminders.dueDate), asc(reminders.title));
 }
 
 export async function getLocations(dayId?: number) {
@@ -155,26 +119,35 @@ export async function getLocations(dayId?: number) {
   const db = getDb();
   if (!db) return [];
 
-  try {
-    if (dayId) {
-      return await db.select().from(locations).where(eq(locations.dayId, dayId));
-    }
-    return await db.select().from(locations).orderBy(asc(locations.dayId), asc(locations.name));
-  } catch {
-    return [];
+  if (dayId) {
+    return db.select().from(locations).where(eq(locations.dayId, dayId));
   }
+
+  return db.select().from(locations).orderBy(asc(locations.dayId), asc(locations.name));
 }
 
-export async function getDashboardBundle(): Promise<AppDataBundle> {
+export async function getDashboardBundle(tripId: number): Promise<AppDataBundle | null> {
   noStore();
+  const db = getDb();
+  if (!db) return null;
+
+  const trip = await db.query.trips.findFirst({
+    where: eq(trips.id, tripId),
+  });
+
+  if (!trip) {
+    return null;
+  }
+
   const [dayRows, packingRows, expenseRows, reminderRows] = await Promise.all([
-    getDaysOverview(),
-    getPackingItems(),
-    getExpenses(),
-    getReminders(),
+    getDaysOverview(tripId),
+    getPackingItems(tripId),
+    getExpenses(tripId),
+    getReminders(tripId),
   ]);
 
   return {
+    trip,
     days: dayRows,
     packingItems: packingRows,
     expenses: expenseRows,
@@ -182,7 +155,34 @@ export async function getDashboardBundle(): Promise<AppDataBundle> {
   };
 }
 
-export function getDatabaseWarning() {
-  if (isDatabaseConfigured()) return null;
-  return "DATABASE_URL is not configured yet. Pages render with fallback trip metadata, but CRUD and seeded trip data require Neon + Drizzle setup.";
+export async function getAppShellData(): Promise<AppShellData | null> {
+  noStore();
+  const context = await getCurrentTripContext();
+  if (!context) {
+    return null;
+  }
+
+  const activeTrip = context.activeTrip ?? (await ensureStarterTrip(context.appUser));
+  if (!activeTrip) {
+    return null;
+  }
+
+  const bundle = await getDashboardBundle(activeTrip.id);
+  if (!bundle) {
+    return null;
+  }
+
+  const refreshedContext = await getCurrentTripContext();
+
+  return {
+    appUser: refreshedContext?.appUser ?? context.appUser,
+    trips: refreshedContext?.trips ?? context.trips,
+    activeTrip,
+    bundle,
+  };
+}
+
+export function getInfrastructureWarning() {
+  const warnings = getInfrastructureWarnings();
+  return warnings.length ? warnings.join(" ") : null;
 }

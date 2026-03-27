@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { startTransition, useState } from "react";
-import { ArrowRight, CalendarDays, ImageUp, Map, Save, X } from "lucide-react";
+import { ArrowRight, ImageUp, Map, Save, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -238,7 +238,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href="/calendar">
+            <Link href="/app/calendar">
               <Button variant="outline">
                 <Map className="size-4" />
                 Trip
@@ -295,7 +295,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                   schedule and location work.
                 </p>
               </div>
-              <Link href={`/days/${day.sourceDate}`}>
+              <Link href={`/app/days/${day.sourceDate}`}>
                 <Button variant="outline">
                   Open Day Detail
                   <ArrowRight className="size-4" />

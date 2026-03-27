@@ -85,11 +85,11 @@ export function DashboardClient({
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Trip Companion"
+        eyebrow="Workspace"
         title="Overview"
-        description="Live schedule, countdown, and quick planning stats for the full Southwest loop."
+        description="Live schedule, countdown, and quick planning stats for your active trip."
         actions={
-          <Link href={`/days/${selectedDay.date}`} className="hidden sm:block">
+          <Link href={`/app/days/${selectedDay.date}`} className="hidden sm:block">
             <Button>
               Open Day Detail
               <ArrowRight className="size-4" />
@@ -106,7 +106,7 @@ export function DashboardClient({
         tripDates={bundle.days.map((day) => day.date)}
       />
       <div className="sm:hidden">
-        <Link href={`/days/${selectedDay.date}`}>
+        <Link href={`/app/days/${selectedDay.date}`}>
           <Button className="w-full">
             Open Day Detail
             <ArrowRight className="size-4" />
@@ -137,7 +137,7 @@ export function DashboardClient({
             type="button"
             aria-label={`Select ${day.title}`}
             onClick={() => setSelectedDate(day.date)}
-            onDoubleClick={() => router.push(`/days/${day.date}`)}
+            onDoubleClick={() => router.push(`/app/days/${day.date}`)}
             className={`min-w-fit rounded-full border px-4 py-2 text-sm transition ${
               day.date === selectedDate
                 ? "border-primary/30 bg-primary/10 text-primary"

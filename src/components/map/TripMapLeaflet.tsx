@@ -22,15 +22,28 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getCategoryLeafletIcon } from "@/components/map/categoryLeafletIcon";
+import { LocationPopup } from "@/components/map/LocationPopup";
 import { getCategoryConfig } from "@/lib/category-config";
 import type { DaySummary } from "@/lib/types";
 import { formatDateMedium, formatTimeRange } from "@/lib/utils";
 
-type MapEventPin = DaySummary["events"][number] & {
+type MapPin = {
+  id: string;
+  source: "location" | "event";
+  title: string;
+  category: string;
+  lat: number;
+  lng: number;
+  locationLabel: string | null;
+  description: string | null;
+  tip: string | null;
+  mapsHref: string;
+  timeLabel: string | null;
   dayId: number;
   dayNumber: number;
   dayTitle: string;
   dayDate: string;
+  locationRecord: DaySummary["locations"][number] | null;
 };
 
 interface DrivingRoute {
@@ -43,26 +56,78 @@ function hasMapCoordinates(event: DaySummary["events"][number]) {
   return event.lat !== null && event.lng !== null;
 }
 
-function getEventMapLabel(event: Pick<DaySummary["events"][number], "location" | "lat" | "lng">) {
-  if (event.location?.trim()) {
-    return event.location;
+function getPinMapLabel(pin: Pick<MapPin, "locationLabel" | "lat" | "lng">) {
+  if (pin.locationLabel?.trim()) {
+    return pin.locationLabel;
   }
 
-  return `Lat ${Number(event.lat).toFixed(4)}, Lon ${Number(event.lng).toFixed(4)}`;
+  return `Lat ${pin.lat.toFixed(4)}, Lon ${pin.lng.toFixed(4)}`;
 }
 
-function getEventMapsHref(event: Pick<DaySummary["events"][number], "location" | "lat" | "lng">) {
-  const query = event.location?.trim()
-    ? event.location
-    : `${event.lat},${event.lng}`;
-
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-}
-
-function getDirectionsHref(start: MapEventPin, end: MapEventPin) {
+function getDirectionsHref(start: MapPin, end: MapPin) {
   const origin = `${start.lat},${start.lng}`;
   const destination = `${end.lat},${end.lng}`;
   return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+}
+
+function createLocationPin(day: DaySummary, location: DaySummary["locations"][number]): MapPin {
+  return {
+    id: `location-${location.id}`,
+    source: "location",
+    title: location.name,
+    category: location.type,
+    lat: Number(location.lat),
+    lng: Number(location.lng),
+    locationLabel: null,
+    description: location.description,
+    tip: location.tip,
+    mapsHref:
+      location.googleMapsUrl ??
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        location.name
+      )}`,
+    timeLabel: null,
+    dayId: day.id,
+    dayNumber: day.dayNumber,
+    dayTitle: day.title,
+    dayDate: day.date,
+    locationRecord: location,
+  };
+}
+
+function createEventPin(day: DaySummary, event: DaySummary["events"][number]): MapPin {
+  return {
+    id: `event-${event.id}`,
+    source: "event",
+    title: event.title,
+    category: event.category,
+    lat: Number(event.lat),
+    lng: Number(event.lng),
+    locationLabel: event.location,
+    description: event.description,
+    tip: event.tip,
+    mapsHref: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      event.location?.trim() ? event.location : `${event.lat},${event.lng}`
+    )}`,
+    timeLabel: formatTimeRange(event.startTime, event.endTime),
+    dayId: day.id,
+    dayNumber: day.dayNumber,
+    dayTitle: day.title,
+    dayDate: day.date,
+    locationRecord: null,
+  };
+}
+
+function getDayPins(day: DaySummary): MapPin[] {
+  const eventPins = day.events
+    .filter((event) => hasMapCoordinates(event))
+    .map((event) => createEventPin(day, event));
+
+  if (eventPins.length > 0) {
+    return eventPins;
+  }
+
+  return day.locations.map((location) => createLocationPin(day, location));
 }
 
 function formatDriveDuration(seconds: number) {
@@ -100,9 +165,9 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   const mobileCarouselRef = useRef<HTMLDivElement>(null);
   const mobileCarouselFrameRef = useRef<number | null>(null);
   const [filter, setFilter] = useState<number | "all">("all");
-  const [activeEventId, setActiveEventId] = useState<number | null>(null);
+  const [activePinId, setActivePinId] = useState<string | null>(null);
   const [routeMode, setRouteMode] = useState(false);
-  const [routePointIds, setRoutePointIds] = useState<number[]>([]);
+  const [routePointIds, setRoutePointIds] = useState<string[]>([]);
   const [drivingRoute, setDrivingRoute] = useState<DrivingRoute | null>(null);
   const [routeStatus, setRouteStatus] = useState<"idle" | "loading" | "error">("idle");
   const [routeError, setRouteError] = useState<string | null>(null);
@@ -114,39 +179,26 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   );
 
   const filteredPins = useMemo(
-    () =>
-      filteredDays.flatMap((day) =>
-        day.events
-          .filter((event) => hasMapCoordinates(event))
-          .map((event) => ({
-            ...event,
-            dayId: day.id,
-            dayNumber: day.dayNumber,
-            dayTitle: day.title,
-            dayDate: day.date,
-          }) satisfies MapEventPin)
-      ),
+    () => filteredDays.flatMap((day) => getDayPins(day)),
     [filteredDays]
   );
 
   const route = filteredDays
-    .map((day) => day.events.find((event) => hasMapCoordinates(event)))
-    .filter(
-      (event): event is NonNullable<typeof event> => Boolean(event)
-    )
-    .map((event) => [Number(event.lat), Number(event.lng)] as [number, number]);
+    .map((day) => getDayPins(day)[0] ?? null)
+    .filter((pin): pin is MapPin => Boolean(pin))
+    .map((pin) => [pin.lat, pin.lng] as [number, number]);
 
   const activePin = useMemo(
-    () => filteredPins.find((event) => event.id === activeEventId) ?? null,
-    [activeEventId, filteredPins]
+    () => filteredPins.find((pin) => pin.id === activePinId) ?? null,
+    [activePinId, filteredPins]
   );
 
   const routeStart = useMemo(
-    () => filteredPins.find((event) => event.id === routePointIds[0]) ?? null,
+    () => filteredPins.find((pin) => pin.id === routePointIds[0]) ?? null,
     [filteredPins, routePointIds]
   );
   const routeEnd = useMemo(
-    () => filteredPins.find((event) => event.id === routePointIds[1]) ?? null,
+    () => filteredPins.find((pin) => pin.id === routePointIds[1]) ?? null,
     [filteredPins, routePointIds]
   );
   const mobileFilterIndex = useMemo(() => {
@@ -160,7 +212,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   const flyTarget = useMemo<{ center: [number, number] | null; zoom: number }>(() => {
     if (activePin) {
       return {
-        center: [Number(activePin.lat), Number(activePin.lng)],
+        center: [activePin.lat, activePin.lng],
         zoom: 13,
       };
     }
@@ -170,31 +222,31 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
     }
 
     const day = days.find((d) => d.dayNumber === filter);
-    const first = day?.events.find((event) => hasMapCoordinates(event));
+    const first = day ? getDayPins(day)[0] : null;
     if (!first) {
       return { center: null, zoom: 8 };
     }
 
     return {
-      center: [Number(first.lat), Number(first.lng)],
+      center: [first.lat, first.lng],
       zoom: 9,
     };
   }, [activePin, days, filter]);
 
   useEffect(() => {
     setRoutePointIds((current) =>
-      current.filter((id) => filteredPins.some((event) => event.id === id))
+      current.filter((id) => filteredPins.some((pin) => pin.id === id))
     );
   }, [filteredPins]);
 
   useEffect(() => {
     if (!filteredPins.length) {
-      setActiveEventId(null);
+      setActivePinId(null);
       return;
     }
 
-    setActiveEventId((current) =>
-      current && filteredPins.some((event) => event.id === current)
+    setActivePinId((current) =>
+      current && filteredPins.some((pin) => pin.id === current)
         ? current
         : filteredPins[0]!.id
     );
@@ -283,8 +335,8 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
     return () => controller.abort();
   }, [routeEnd, routeMode, routeStart]);
 
-  function handlePinSelection(eventId: number) {
-    setActiveEventId(eventId);
+  function handlePinSelection(pinId: string) {
+    setActivePinId(pinId);
   }
 
   function clearRoute() {
@@ -300,28 +352,28 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
     setRoutePickerOpen(true);
   }
 
-  function handleRoutePointSelection(eventId: number) {
+  function handleRoutePointSelection(pinId: string) {
     setRouteMode(true);
     setRoutePointIds((current) => {
       if (current.length === 0) {
-        return [eventId];
+        return [pinId];
       }
 
       if (current.length === 1) {
-        if (current[0] === eventId) {
+        if (current[0] === pinId) {
           return current;
         }
 
-        return [current[0], eventId];
+        return [current[0], pinId];
       }
 
-      if (current[0] === eventId) {
-        return [eventId];
+      if (current[0] === pinId) {
+        return [pinId];
       }
 
-      return [current[1] === eventId ? current[0]! : current[1]!, eventId];
+      return [current[1] === pinId ? current[0]! : current[1]!, pinId];
     });
-    setActiveEventId(eventId);
+    setActivePinId(pinId);
   }
 
   function goToPreviousDay() {
@@ -331,7 +383,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
 
     if (mobileFilterIndex <= 0) {
       setFilter("all");
-      setActiveEventId(null);
+      setActivePinId(null);
       return;
     }
 
@@ -341,7 +393,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
     }
 
     setFilter(previousDay.dayNumber);
-    setActiveEventId(null);
+    setActivePinId(null);
   }
 
   function goToNextDay() {
@@ -352,7 +404,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
       }
 
       setFilter(firstDay.dayNumber);
-      setActiveEventId(null);
+      setActivePinId(null);
       return;
     }
 
@@ -362,7 +414,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
     }
 
     setFilter(nextDay.dayNumber);
-    setActiveEventId(null);
+    setActivePinId(null);
   }
 
   function syncActivePinFromCarousel() {
@@ -381,7 +433,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
     const containerRect = container.getBoundingClientRect();
     const containerCenter = containerRect.left + containerRect.width / 2;
 
-    let closestId: number | null = null;
+    let closestId: string | null = null;
     let closestDistance = Number.POSITIVE_INFINITY;
 
     for (const card of cards) {
@@ -391,12 +443,12 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
 
       if (distance < closestDistance) {
         closestDistance = distance;
-        closestId = Number(card.dataset.pinId);
+        closestId = card.dataset.pinId ?? null;
       }
     }
 
     if (closestId !== null) {
-      setActiveEventId((current) => (current === closestId ? current : closestId));
+      setActivePinId((current) => (current === closestId ? current : closestId));
     }
   }
 
@@ -434,7 +486,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
 
               const currentDay = days.find((day) => day.dayNumber === filter);
               if (currentDay) {
-                router.push(`/days/${currentDay.date}`);
+                router.push(`/app/days/${currentDay.date}`);
               }
             }}
             className="min-w-0 flex-1 rounded-[1.1rem] border border-white/55 bg-white/88 px-4 py-2 text-center transition hover:bg-white disabled:pointer-events-none"
@@ -540,7 +592,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
             }`}
             onClick={() => {
               setFilter("all");
-              setActiveEventId(null);
+              setActivePinId(null);
             }}
           >
             All Days
@@ -556,9 +608,9 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
               }`}
               onClick={() => {
                 setFilter(day.dayNumber);
-                setActiveEventId(null);
+                setActivePinId(null);
               }}
-              onDoubleClick={() => router.push(`/days/${day.date}`)}
+              onDoubleClick={() => router.push(`/app/days/${day.date}`)}
             >
               Day {day.dayNumber}
             </button>
@@ -656,15 +708,15 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
             </div>
 
             <div className="space-y-3">
-              {filteredPins.map((event) => {
-                const config = getCategoryConfig(event.category);
-                const isActive = event.id === activeEventId;
-                const isRouteSelected = routePointIds.includes(event.id);
+              {filteredPins.map((pin) => {
+                const config = getCategoryConfig(pin.category);
+                const isActive = pin.id === activePinId;
+                const isRouteSelected = routePointIds.includes(pin.id);
                 return (
                   <button
-                    key={event.id}
+                    key={pin.id}
                     type="button"
-                    onClick={() => handlePinSelection(event.id)}
+                    onClick={() => handlePinSelection(pin.id)}
                     className={`w-full rounded-[1.35rem] border p-4 text-left transition ${
                       isRouteSelected
                         ? "border-sky-400/45 bg-sky-500/10 shadow-[0_14px_30px_rgba(56,189,248,0.12)]"
@@ -675,28 +727,28 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-medium">{event.title}</p>
+                        <p className="font-medium">{pin.title}</p>
                         <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                          Day {event.dayNumber} · {formatDateMedium(event.dayDate)}
+                          Day {pin.dayNumber} · {formatDateMedium(pin.dayDate)}
                         </p>
                       </div>
                       <Badge className="shrink-0 bg-secondary text-foreground">
                         {isRouteSelected
-                          ? routePointIds[0] === event.id
+                          ? routePointIds[0] === pin.id
                             ? "Start"
                             : "End"
                           : config.label}
                       </Badge>
                     </div>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {getEventMapLabel(event)}
+                      {getPinMapLabel(pin)}
                     </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {formatTimeRange(event.startTime, event.endTime)}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">{event.dayTitle}</p>
-                    {event.tip ? (
-                      <p className="mt-2 text-sm text-muted-foreground">{event.tip}</p>
+                    {pin.timeLabel ? (
+                      <p className="mt-1 text-sm text-muted-foreground">{pin.timeLabel}</p>
+                    ) : null}
+                    <p className="mt-1 text-sm text-muted-foreground">{pin.dayTitle}</p>
+                    {pin.tip ? (
+                      <p className="mt-2 text-sm text-muted-foreground">{pin.tip}</p>
                     ) : null}
                   </button>
                 );
@@ -734,16 +786,22 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
           ) : null}
 
           {filteredDays.map((day) => {
-            const hikeEvents = day.events.filter(
-              (event) =>
-                event.category === "hike" &&
-                event.lat !== null &&
-                event.lng !== null
-            );
-            if (hikeEvents.length < 2) return null;
-            const positions = hikeEvents.map(
-              (event) => [Number(event.lat), Number(event.lng)] as [number, number]
-            );
+            const hikeEventPins = day.events
+              .filter(
+                (event) =>
+                  event.category === "hike" &&
+                  event.lat !== null &&
+                  event.lng !== null
+              )
+              .map((event) => createEventPin(day, event));
+            const hikeLocationPins = day.locations
+              .filter((location) => location.type === "hike")
+              .map((location) => createLocationPin(day, location));
+            const hikePins = hikeEventPins.length > 0 ? hikeEventPins : hikeLocationPins;
+
+            if (hikePins.length < 2) return null;
+
+            const positions = hikePins.map((pin) => [pin.lat, pin.lng] as [number, number]);
             return (
               <Polyline
                 key={`hike-${day.id}`}
@@ -757,25 +815,27 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                   <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
                     Day {day.dayNumber} Hikes
                   </p>
-                  {hikeEvents.map((event, i) => (
+                  {hikePins.map((pin, i) => (
                     <div
-                      key={event.id}
-                      style={{ marginBottom: i < hikeEvents.length - 1 ? 10 : 0 }}
+                      key={pin.id}
+                      style={{ marginBottom: i < hikePins.length - 1 ? 10 : 0 }}
                     >
                       <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>
-                        🥾 {event.title}
+                        🥾 {pin.title}
                       </p>
-                      <p style={{ fontSize: 12, color: "#666", marginBottom: 2 }}>
-                        {formatTimeRange(event.startTime, event.endTime)}
-                      </p>
-                      {event.description ? (
-                        <p style={{ fontSize: 12, color: "#555", marginBottom: 2 }}>
-                          {event.description}
+                      {pin.timeLabel ? (
+                        <p style={{ fontSize: 12, color: "#666", marginBottom: 2 }}>
+                          {pin.timeLabel}
                         </p>
                       ) : null}
-                      {event.tip ? (
+                      {pin.description ? (
+                        <p style={{ fontSize: 12, color: "#555", marginBottom: 2 }}>
+                          {pin.description}
+                        </p>
+                      ) : null}
+                      {pin.tip ? (
                         <p style={{ fontSize: 11, color: "#888", fontStyle: "italic" }}>
-                          {event.tip}
+                          {pin.tip}
                         </p>
                       ) : null}
                     </div>
@@ -785,62 +845,71 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
             );
           })}
 
-          {filteredDays.map((day) =>
-            day.events
-              .filter((event) => hasMapCoordinates(event))
-              .map((event) => (
+          {filteredDays.flatMap((day) =>
+            getDayPins(day).map((pin) => (
               <Marker
-                key={event.id}
-                icon={getCategoryLeafletIcon(event.category)}
-                position={[Number(event.lat), Number(event.lng)]}
+                key={pin.id}
+                icon={getCategoryLeafletIcon(pin.category)}
+                position={[pin.lat, pin.lng]}
                 eventHandlers={{
-                  click: () => handlePinSelection(event.id),
+                  click: () => handlePinSelection(pin.id),
                 }}
               >
                 <Popup minWidth={160} maxWidth={240}>
-                  <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
-                    {event.title}
-                  </p>
-                  <p
-                    style={{
-                      fontSize: 10,
-                      color: "#888",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.1em",
-                      marginBottom: 6,
-                    }}
-                  >
-                    {getCategoryConfig(event.category).label}
-                  </p>
-                  <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
-                    {formatTimeRange(event.startTime, event.endTime)}
-                  </p>
-                  <p style={{ fontSize: 13, marginBottom: 4 }}>
-                    {getEventMapLabel(event)}
-                  </p>
-                  {event.description ? (
-                    <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
-                      {event.description}
-                    </p>
-                  ) : null}
-                  {event.tip ? (
-                    <p style={{ fontSize: 12, color: "#666", fontStyle: "italic", marginBottom: 4 }}>
-                      {event.tip}
-                    </p>
-                  ) : null}
-                  {day.title ? (
-                    <p style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
-                      Day {day.dayNumber}: {day.title}
-                    </p>
-                  ) : null}
-                  <a
-                    href={getEventMapsHref(event)}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}
-                  >
-                    Open in Maps →
-                  </a>
+                  {pin.locationRecord ? (
+                    <div className="space-y-3">
+                      <LocationPopup location={pin.locationRecord} />
+                      <p style={{ fontSize: 11, color: "#888" }}>
+                        Day {pin.dayNumber}: {pin.dayTitle}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
+                        {pin.title}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: 10,
+                          color: "#888",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.1em",
+                          marginBottom: 6,
+                        }}
+                      >
+                        {getCategoryConfig(pin.category).label}
+                      </p>
+                      {pin.timeLabel ? (
+                        <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
+                          {pin.timeLabel}
+                        </p>
+                      ) : null}
+                      <p style={{ fontSize: 13, marginBottom: 4 }}>
+                        {getPinMapLabel(pin)}
+                      </p>
+                      {pin.description ? (
+                        <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
+                          {pin.description}
+                        </p>
+                      ) : null}
+                      {pin.tip ? (
+                        <p style={{ fontSize: 12, color: "#666", fontStyle: "italic", marginBottom: 4 }}>
+                          {pin.tip}
+                        </p>
+                      ) : null}
+                      <p style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+                        Day {pin.dayNumber}: {pin.dayTitle}
+                      </p>
+                      <a
+                        href={pin.mapsHref}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}
+                      >
+                        Open in Maps →
+                      </a>
+                    </>
+                  )}
                 </Popup>
               </Marker>
             ))
@@ -866,16 +935,17 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                   aria-hidden="true"
                   className="w-[calc(50vw-5.75rem)] shrink-0"
                 />
-                {filteredPins.map((event) => {
-                  const isActive = event.id === activeEventId;
-                  const isRouteSelected = routePointIds.includes(event.id);
+                {filteredPins.map((pin) => {
+                  const isActive = pin.id === activePinId;
+                  const isRouteSelected = routePointIds.includes(pin.id);
+                  const config = getCategoryConfig(pin.category);
 
                   return (
                     <button
-                      key={event.id}
-                      data-pin-id={event.id}
+                      key={pin.id}
+                      data-pin-id={pin.id}
                       type="button"
-                      onClick={() => handlePinSelection(event.id)}
+                      onClick={() => handlePinSelection(pin.id)}
                       className={`w-[calc(100vw-12rem)] min-w-[10.25rem] max-w-[11.5rem] shrink-0 snap-center rounded-[1.2rem] border px-3 py-2.5 text-left shadow-[0_16px_30px_rgba(28,31,46,0.12)] backdrop-blur-xl transition ${
                         isRouteSelected
                           ? "border-sky-400/55 bg-sky-100"
@@ -884,12 +954,12 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                           : "border-white/70 bg-white"
                       }`}
                     >
-                      <p className="truncate text-sm font-medium">{event.title}</p>
+                      <p className="truncate text-sm font-medium">{pin.title}</p>
                       <p className="mt-1 truncate text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                        {formatDateMedium(event.dayDate)}
+                        {formatDateMedium(pin.dayDate)}
                       </p>
                       <p className="mt-1 text-sm text-foreground">
-                        {formatTimeRange(event.startTime, event.endTime)}
+                        {pin.timeLabel ?? config.label}
                       </p>
                     </button>
                   );
@@ -905,7 +975,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
       </div>
 
       <Dialog open={routePickerOpen} onOpenChange={setRoutePickerOpen}>
-        <DialogContent className="max-w-[calc(100%-1.25rem)] rounded-[1.5rem] border border-white/50 bg-white/95 p-0 sm:max-w-lg">
+        <DialogContent className="max-w-[calc(100%-1.25rem)] rounded-[1.5rem] border border-white/50 bg-white/95 sm:max-w-lg p-2">
           <DialogHeader className="px-5 pt-5">
             <DialogTitle>Build Route</DialogTitle>
             <p className="text-sm text-muted-foreground">
@@ -926,15 +996,15 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
             </div>
 
             <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
-              {filteredPins.map((event) => {
-                const config = getCategoryConfig(event.category);
-                const isSelected = routePointIds.includes(event.id);
+              {filteredPins.map((pin) => {
+                const config = getCategoryConfig(pin.category);
+                const isSelected = routePointIds.includes(pin.id);
 
                 return (
                   <button
-                    key={`route-${event.id}`}
+                    key={`route-${pin.id}`}
                     type="button"
-                    onClick={() => handleRoutePointSelection(event.id)}
+                    onClick={() => handleRoutePointSelection(pin.id)}
                     className={`w-full rounded-[1.25rem] border p-3 text-left transition ${
                       isSelected
                         ? "border-sky-400/45 bg-sky-500/10"
@@ -943,21 +1013,21 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-medium">{event.title}</p>
+                        <p className="font-medium">{pin.title}</p>
                         <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                          Day {event.dayNumber} · {formatTimeRange(event.startTime, event.endTime)}
+                          Day {pin.dayNumber} · {pin.timeLabel ?? config.label}
                         </p>
                       </div>
                       <Badge className="shrink-0 bg-secondary text-foreground">
                         {isSelected
-                          ? routePointIds[0] === event.id
+                          ? routePointIds[0] === pin.id
                             ? "Start"
                             : "End"
                           : config.label}
                       </Badge>
                     </div>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {getEventMapLabel(event)}
+                      {getPinMapLabel(pin)}
                     </p>
                   </button>
                 );

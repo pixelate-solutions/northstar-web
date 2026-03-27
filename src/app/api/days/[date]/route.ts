@@ -1,16 +1,21 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
-import { getDb } from "@/db";
 import { days, type NewDay } from "@/db/schema";
+import { requireOwnedDay, requireRouteTripContext } from "@/lib/route-auth";
 import { getDayByDate } from "@/lib/server-data";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ date: string }> }
 ) {
+  const context = await requireRouteTripContext();
+  if ("error" in context) {
+    return context.error;
+  }
+
   const { date } = await params;
-  const day = await getDayByDate(date);
+  const day = await getDayByDate(context.activeTrip.id, date);
 
   if (!day) {
     return NextResponse.json({ error: "Day not found." }, { status: 404 });
@@ -23,12 +28,10 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ date: string }> }
 ) {
-  const db = getDb();
-  if (!db) {
-    return NextResponse.json(
-      { error: "DATABASE_URL is required before days can be updated." },
-      { status: 503 }
-    );
+  const { date } = await params;
+  const context = await requireOwnedDay(date);
+  if (!("day" in context)) {
+    return context.error;
   }
 
   const payload = (await request.json()) as {
@@ -41,7 +44,6 @@ export async function PUT(
     notes?: string | null;
     coverImageUrl?: string | null;
   };
-  const { date } = await params;
 
   const updates: Partial<NewDay> = {};
 
@@ -71,19 +73,14 @@ export async function PUT(
   }
 
   if (!Object.keys(updates).length) {
-    const day = await getDayByDate(date);
-    if (!day) {
-      return NextResponse.json({ error: "Day not found." }, { status: 404 });
-    }
-
-    return NextResponse.json(day);
+    return NextResponse.json(context.day);
   }
 
   try {
-    const [updated] = await db
+    const [updated] = await context.db
       .update(days)
       .set(updates)
-      .where(eq(days.date, date))
+      .where(and(eq(days.id, context.day.id), eq(days.tripId, context.activeTrip.id)))
       .returning();
 
     if (!updated) {
@@ -93,7 +90,7 @@ export async function PUT(
     return NextResponse.json(updated);
   } catch {
     return NextResponse.json(
-      { error: "Unable to update this day. Check that the date is unique." },
+      { error: "Unable to update this day. Check that the date is unique for this trip." },
       { status: 409 }
     );
   }

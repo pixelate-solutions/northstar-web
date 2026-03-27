@@ -88,7 +88,7 @@ export function MobileDayNavigator({
             return;
           }
 
-          router.push(`/days/${selectedDay.date}`);
+          router.push(`/app/days/${selectedDay.date}`);
         }}
         className="min-w-0 flex-1 rounded-[1.1rem] border border-white/55 bg-white/88 px-4 py-2 text-center transition hover:bg-white disabled:pointer-events-none"
         disabled={!selectedDay}

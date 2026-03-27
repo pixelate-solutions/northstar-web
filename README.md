@@ -1,14 +1,24 @@
-# SW Road Trip '26
+# Northstar
 
-A full-stack Next.js 14 road trip planner for an 11-day Southwest itinerary from April 8–18, 2026:
+Northstar is a multi-tenant travel planning SaaS built with Next.js, Clerk, Neon, Drizzle, and Stripe.
 
-Phoenix / Scottsdale → Sedona → Grand Canyon → Page → Zion → Bryce Canyon → Provo → Salt Lake City → Bonneville Salt Flats → Las Vegas → Scottsdale → Home
+The app now has:
+
+- a public landing page at `/`
+- account-based authentication with Clerk
+- a paid app workspace under `/app`
+- trip ownership scoped to the signed-in user
+- multiple trips per account
+- a built-in Southwest template that can be copied into user accounts
+- Stripe-based lifetime access gating
 
 ## Stack
 
-- Next.js 14 App Router + TypeScript
+- Next.js 16 App Router + TypeScript
 - Tailwind CSS
 - Neon PostgreSQL + Drizzle ORM
+- Clerk
+- Stripe
 - React Leaflet + OpenStreetMap
 - React Big Calendar
 - DnD Kit
@@ -19,56 +29,59 @@ Phoenix / Scottsdale → Sedona → Grand Canyon → Page → Zion → Bryce Can
 ## Setup
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Set environment variables
 cp .env.example .env.local
-
-# 3. Add your Neon connection string to .env.local
-# DATABASE_URL=...
-
-# 4. Generate and run database migrations
-npm run db:generate
-npm run db:migrate
-
-# 5. Seed the database with trip data
-npm run db:seed
-
-# 6. Start development
-npm run dev
 ```
 
-## Environment Variables
+Add the required environment variables:
 
 ```bash
 DATABASE_URL=
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
+
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+
+STRIPE_SECRET_KEY=
+STRIPE_PRICE_ID=
+STRIPE_WEBHOOK_SECRET=
+
 OPENWEATHER_API_KEY=
 ```
 
-## Available Scripts
+Then generate and apply the database changes:
+
+```bash
+npm run db:generate
+npm run db:migrate
+```
+
+To seed a local demo account and starter trip:
+
+```bash
+npm run db:seed
+```
+
+Start development:
 
 ```bash
 npm run dev
-npm run build
-npm run start
-npm run db:generate
-npm run db:migrate
-npm run db:seed
-npm run db:studio
 ```
+
+## Billing Flow
+
+The current purchase flow is:
+
+1. Sign up with Clerk
+2. Enter the app
+3. Hit the `/unlock` paywall
+4. Complete Stripe Checkout
+5. Unlock lifetime access
+
+The success redirect and Stripe webhook both support granting access.
 
 ## Notes
 
-- If `DATABASE_URL` is empty, the UI still renders with fallback trip-day metadata so the app can build and preview locally.
-- CRUD actions and seeded trip content require a configured Neon database and a completed seed run.
-- Weather cards are optional and stay hidden until `OPENWEATHER_API_KEY` is set.
-
-## Deploy
-
-Deploy to Vercel after setting:
-
-- `DATABASE_URL`
-- `NEXT_PUBLIC_BASE_URL`
-- `OPENWEATHER_API_KEY` (optional)
+- The old Southwest trip data is preserved as the built-in template source.
+- `src/db/seed.ts` is now treated as template data input, while `src/db/seed-app.ts` handles demo seeding for the new schema.
+- AI subscription features are not implemented yet; the data model is prepared for a paid core product first.

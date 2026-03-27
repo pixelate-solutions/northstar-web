@@ -72,7 +72,7 @@ export function CountdownBanner({
     reminder.dueDate ? !isReminderOverdue(reminder.dueDate) : false
   );
 
-  let message = "Memories from the Southwest";
+  let message = "Your trip workspace is ready";
   if (status.status === "before") {
     message = `${status.daysUntil} days until departure`;
   } else if (status.status === "during") {

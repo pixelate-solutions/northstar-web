@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 
-export function buildMetadata(pageName: string): Metadata {
+import { product } from "@/lib/product";
+
+export function buildMetadata(pageName?: string): Metadata {
+  const title = pageName ? `${product.name} | ${pageName}` : product.name;
+
   return {
-    title: `SW Road Trip '26 | ${pageName}`,
-    description:
-      "A mobile-first Southwest road trip planner for April 8–18, 2026.",
+    title,
+    description: product.description,
   };
 }

@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { AppProviders } from "@/components/shared/app-providers";
+import { product } from "@/lib/product";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -16,9 +17,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "SW Road Trip '26",
-  description:
-    "A full-stack Southwest road trip planner for Phoenix, Sedona, Zion, Bryce, Salt Lake City, Bonneville, and Las Vegas.",
+  title: product.name,
+  description: product.description,
 };
 
 export default function RootLayout({

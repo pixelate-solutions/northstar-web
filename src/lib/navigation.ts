@@ -8,19 +8,19 @@ import {
 } from "lucide-react";
 
 export const primaryNavItems = [
-  { href: "/", label: "Dashboard", icon: Home },
-  { href: "/days", label: "Days", icon: MapPinned },
-  { href: "/calendar", label: "Trip", icon: CalendarDays },
-  { href: "/packing", label: "Packing", icon: Package },
-  { href: "/budget", label: "Budget", icon: DollarSign },
-  { href: "/reminders", label: "Reminders", icon: Bell },
+  { href: "/app", label: "Dashboard", icon: Home },
+  { href: "/app/calendar", label: "Trip", icon: CalendarDays },
+  { href: "/app/days", label: "Days", icon: MapPinned },
+  { href: "/app/packing", label: "Packing", icon: Package },
+  { href: "/app/budget", label: "Budget", icon: DollarSign },
+  { href: "/app/reminders", label: "Reminders", icon: Bell },
 ];
 
 export const mobileNavItems = [
-  { href: "/", label: "Home", icon: Home },
-  { href: "/days", label: "Days", icon: MapPinned },
-  { href: "/calendar", label: "Trip", icon: CalendarDays },
-  { href: "/packing", label: "Packing", icon: Package },
-  { href: "/budget", label: "Budget", icon: DollarSign },
-  { href: "/reminders", label: "Reminders", icon: Bell },
+  { href: "/app", label: "Home", icon: Home },
+  { href: "/app/calendar", label: "Trip", icon: CalendarDays },
+  { href: "/app/days", label: "Days", icon: MapPinned },
+  { href: "/app/packing", label: "Packing", icon: Package },
+  { href: "/app/budget", label: "Budget", icon: DollarSign },
+  { href: "/app/reminders", label: "Reminders", icon: Bell },
 ];
