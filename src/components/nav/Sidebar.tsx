@@ -13,7 +13,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -47,6 +46,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 interface SidebarProps {
   activeTripId: number;
   countdownLabel: string;
+  daysHref: string;
   packingPercent: number;
   totalBooked: number;
   tripName: string;
@@ -56,6 +56,7 @@ interface SidebarProps {
 export function Sidebar({
   activeTripId,
   countdownLabel,
+  daysHref,
   packingPercent,
   totalBooked,
   tripName,
@@ -154,10 +155,10 @@ export function Sidebar({
             </DropdownMenuTrigger>
             <DropdownMenuContent
               sideOffset={8}
-              className="w-[var(--anchor-width)] rounded-[1.1rem] border border-white/60 bg-white/96 p-1.5 shadow-[0_22px_60px_rgba(17,46,72,0.14)] backdrop-blur-xl"
+              className="w-[min(22rem,calc(100vw-2rem))] rounded-[1.25rem] border border-white/60 bg-white/96 p-2 shadow-[0_22px_60px_rgba(17,46,72,0.14)] backdrop-blur-xl sm:w-[var(--anchor-width)] sm:rounded-[1.1rem] sm:p-1.5"
             >
               <DropdownMenuGroup>
-                <DropdownMenuLabel className="px-2 py-1.5 text-[11px] uppercase tracking-[0.26em] text-muted-foreground">
+                <DropdownMenuLabel className="px-3 py-2 text-[11px] uppercase tracking-[0.26em] text-muted-foreground sm:px-2 sm:py-1.5">
                   Trips
                 </DropdownMenuLabel>
                 {trips.map((trip) => (
@@ -165,12 +166,12 @@ export function Sidebar({
                     key={trip.id}
                     onClick={() => handleTripChange(trip.id)}
                     className={cn(
-                      "cursor-pointer rounded-[0.9rem] px-2.5 py-2.5 hover:bg-slate-100/80 focus:bg-slate-100/80",
+                      "cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground sm:rounded-[0.9rem] sm:px-2.5 sm:py-2.5",
                       trip.id === activeTripId && "bg-secondary/70 text-foreground"
                     )}
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{trip.name}</p>
+                      <p className="truncate text-[0.95rem] font-medium sm:text-sm">{trip.name}</p>
                       {trip.id === activeTripId ? (
                         <p className="text-xs text-muted-foreground">Current trip</p>
                       ) : null}
@@ -181,7 +182,7 @@ export function Sidebar({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => setCreateDialogOpen(true)}
-                className="cursor-pointer rounded-[0.9rem] px-2.5 py-2.5 hover:bg-slate-100/80 focus:bg-slate-100/80"
+                className="cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground sm:rounded-[0.9rem] sm:px-2.5 sm:py-2.5"
               >
                 <Plus className="size-4" />
                 <span>Add Trip</span>
@@ -195,15 +196,17 @@ export function Sidebar({
         <TooltipProvider>
           <SidebarGroup>
             {primaryNavItems.map((item) => {
+              const href = item.href === "/app/days" ? daysHref : item.href;
               const isActive =
                 pathname === item.href ||
+                pathname === href ||
                 (item.href !== "/app" && pathname.startsWith(item.href));
               const Icon = item.icon;
 
               const navLink = (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={href}
                   className={cn(
                     "flex items-center rounded-2xl border text-sm transition-[background-color,border-color,color,padding,transform] duration-200",
                     collapsed ? "justify-center px-0 py-3" : "gap-3 px-4 py-3",
@@ -300,7 +303,7 @@ export function Sidebar({
               This will create a blank 7-day trip and switch your active workspace to it.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-6 rounded-b-[1.6rem] border-slate-200 bg-slate-50/90 px-6 py-4">
+          <div className="mt-6 flex flex-col-reverse gap-2 rounded-b-[1.6rem] border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
             <Button
               type="button"
               variant="outline"
@@ -312,7 +315,7 @@ export function Sidebar({
             <Button type="button" onClick={handleCreateTrip} disabled={creatingTrip}>
               {creatingTrip ? "Creating..." : "Create Trip"}
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </SidebarShell>

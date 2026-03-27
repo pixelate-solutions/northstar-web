@@ -78,17 +78,25 @@ export default async function AppLayout({
           100
       )
     : 0;
+  const daysHref = bundle.days[0] ? `/app/days/${bundle.days[0].date}` : "/app/days";
 
   return (
     <SidebarProvider>
       <div className="relative isolate min-h-screen bg-transparent text-foreground">
         <div className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[44rem] bg-[radial-gradient(circle_at_top_left,rgba(33,91,137,0.18),transparent_26%),radial-gradient(circle_at_22%_8%,rgba(53,173,168,0.18),transparent_22%),radial-gradient(circle_at_top_right,rgba(191,224,227,0.24),transparent_28%),linear-gradient(180deg,rgba(248,252,253,0.92)_0%,rgba(244,249,250,0.90)_52%,rgba(251,253,253,0.92)_100%)] [mask-image:linear-gradient(to_bottom,black_0%,black_74%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_74%,transparent_100%)]" />
-        <MobileHeader countdownLabel={countdownLabel} tripName={activeTrip.name} />
+        <MobileHeader
+          activeTripId={activeTrip.id}
+          countdownLabel={countdownLabel}
+          daysHref={daysHref}
+          tripName={activeTrip.name}
+          trips={allTrips.map((trip) => ({ id: trip.id, name: trip.name }))}
+        />
         <div className="mx-auto flex min-h-screen max-w-[1600px] lg:my-5 lg:min-h-[calc(100vh-2.5rem)] lg:max-w-[calc(100%-2.5rem)]">
           <Sidebar
             activeTripId={activeTrip.id}
             trips={allTrips.map((trip) => ({ id: trip.id, name: trip.name }))}
             tripName={activeTrip.name}
+            daysHref={daysHref}
             packingPercent={packingPercent}
             totalBooked={totalBooked}
             countdownLabel={countdownLabel}

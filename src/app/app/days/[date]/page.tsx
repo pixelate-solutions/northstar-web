@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, ChevronRight, ExternalLink, UtensilsCrossed } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Settings,
+  UtensilsCrossed,
+} from "lucide-react";
 
 import { DayNotesEditor } from "@/components/dashboard/DayNotesEditor";
 import { DaySchedule } from "@/components/schedule/DaySchedule";
@@ -83,6 +89,12 @@ export default async function DayDetailPage({
         description={`${day.location} · ${day.sleepLocation ?? "Stay TBD"}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Link href="/app/days">
+              <Button variant="outline">
+                <Settings className="size-4" />
+                Configure
+              </Button>
+            </Link>
             {previousDay ? (
               <Link href={`/app/days/${previousDay.date}`}>
                 <Button variant="outline">
