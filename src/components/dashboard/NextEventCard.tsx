@@ -15,6 +15,66 @@ import {
   timeToMinutes,
 } from "@/lib/utils";
 
+function EventSummary({
+  event,
+  selectedDate,
+  now,
+  tone,
+}: {
+  event: Event;
+  selectedDate: string;
+  now: Date;
+  tone: "current" | "next";
+}) {
+  const distanceLabel =
+    tone === "next"
+      ? getEventDistanceLabel(selectedDate, event.startTime, now) ??
+        `Coming up in ${minutesUntilEvent(event.startTime, now)} min`
+      : null;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs uppercase tracking-[0.28em] text-primary/80">
+          {tone === "current" ? "Current event" : "Next up"}
+        </p>
+        <EventCategoryBadge category={event.category} />
+      </div>
+
+      <div className="min-w-0">
+        <h3 className="truncate text-xl font-semibold">{event.title}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{formatDate(selectedDate)}</p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl bg-secondary/60 p-4 text-sm">
+          <div className="flex items-start gap-2 text-muted-foreground">
+            <Clock3 className="mt-0.5 size-4 shrink-0 text-primary" />
+            <span>{formatTimeRange(event.startTime, event.endTime)}</span>
+          </div>
+        </div>
+        <div className="rounded-2xl bg-secondary/60 p-4 text-sm">
+          <div className="flex min-w-0 items-start gap-2 text-muted-foreground">
+            <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+            <span>{event.location || "Location TBD"}</span>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm ${
+          tone === "current"
+            ? "border border-red-500/25 bg-red-500/10 text-red-700"
+            : "border border-primary/25 bg-primary/10 text-primary"
+        }`}
+      >
+        <Zap className="size-4 shrink-0" />
+        {tone === "current" ? "Happening now" : distanceLabel}
+      </div>
+    </div>
+  );
+}
+
 export function NextEventCard({
   events,
   selectedDate,
@@ -30,65 +90,52 @@ export function NextEventCard({
   }, []);
 
   const { current, next } = useMemo(() => {
-    const sorted = [...events].sort(
-      (a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)
+    const scheduledEvents = events
+      .filter((event) => Boolean(event.startTime))
+      .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+    const active = scheduledEvents.find((event) =>
+      isEventActive(event.startTime, event.endTime, now)
     );
-    const active = sorted.find((event) => isEventActive(event.startTime, event.endTime, now));
-    const upcoming = sorted.find((event) => minutesUntilEvent(event.startTime, now) > 0);
-    return { current: active ?? null, next: active ? null : upcoming ?? null };
+    const upcoming = scheduledEvents.find(
+      (event) => minutesUntilEvent(event.startTime, now) > 0
+    );
+    return { current: active ?? null, next: upcoming ?? null };
   }, [events, now]);
-
-  const cardEvent = current ?? next;
+  const hasEventsToShow = Boolean(current || next);
+  const title =
+    current && next ? "Current & next up" : current ? "Happening now" : "Next up";
 
   return (
-    <Card className="rounded-[2rem] border border-border/70 bg-card/80">
+    <Card className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80">
       <CardHeader>
-        <CardTitle className="text-lg">
-          {current ? "Happening now" : "Next up"}
-        </CardTitle>
+        <CardTitle className="text-lg">{title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {cardEvent ? (
+        {hasEventsToShow ? (
           <>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-xl font-semibold">{cardEvent.title}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {formatDate(selectedDate)}
-                </p>
-              </div>
-              <EventCategoryBadge category={cardEvent.category} />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl bg-secondary/60 p-4 text-sm">
-                <p className="inline-flex items-center gap-2 text-muted-foreground">
-                  <Clock3 className="size-4 text-primary" />
-                  {formatTimeRange(cardEvent.startTime, cardEvent.endTime)}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-secondary/60 p-4 text-sm">
-                <p className="inline-flex items-center gap-2 text-muted-foreground">
-                  <MapPin className="size-4 text-primary" />
-                  {cardEvent.location || "Location TBD"}
-                </p>
-              </div>
-            </div>
             {current ? (
-              <div className="inline-flex items-center gap-2 rounded-full border border-red-500/25 bg-red-500/10 px-3 py-1 text-sm text-red-700">
-                <Zap className="size-4" />
-                Happening now
-              </div>
-            ) : next ? (
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-sm text-primary">
-                <Zap className="size-4" />
-                {getEventDistanceLabel(selectedDate, next.startTime, now) ??
-                  `Coming up in ${minutesUntilEvent(next.startTime, now)} min`}
-              </div>
+              <EventSummary
+                event={current}
+                selectedDate={selectedDate}
+                now={now}
+                tone="current"
+              />
+            ) : null}
+            {current && next ? <div className="border-t border-border/60" /> : null}
+            {next ? (
+              <EventSummary
+                event={next}
+                selectedDate={selectedDate}
+                now={now}
+                tone="next"
+              />
             ) : null}
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            No events have been scheduled for this day yet.
+            {events.length > 0
+              ? "No more events are scheduled for the rest of this day."
+              : "No events have been scheduled for this day yet."}
           </p>
         )}
       </CardContent>

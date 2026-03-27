@@ -45,9 +45,23 @@ export type TripStatus =
   | { status: "during"; dayNumber: number; currentDate: string }
   | { status: "after" };
 
-export function getTripStatus(now = new Date()): TripStatus {
-  const startMs = TRIP_START.getTime();
-  const endMs = TRIP_END.getTime();
+export function getActiveTripDates(tripDates?: string[]) {
+  const dates = [...(tripDates ?? TRIP_DATES)]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+
+  return dates.length ? dates : TRIP_DATES;
+}
+
+export function getTripStatus(
+  now = new Date(),
+  tripDates?: string[]
+): TripStatus {
+  const dates = getActiveTripDates(tripDates);
+  const start = new Date(`${dates[0]}T00:00:00`);
+  const end = new Date(`${dates[dates.length - 1]}T23:59:59`);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
   const nowMs = now.getTime();
 
   if (nowMs < startMs) {
@@ -59,14 +73,33 @@ export function getTripStatus(now = new Date()): TripStatus {
   }
   const dayNumber =
     Math.floor((nowMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
-  const currentDate = TRIP_DATES[dayNumber - 1] ?? TRIP_DATES[0];
+  const currentDate = dates[dayNumber - 1] ?? dates[0];
   return { status: "during", dayNumber, currentDate };
 }
 
-export function getDefaultDate(): string {
-  const status = getTripStatus();
+export function getDefaultDate(tripDates?: string[]): string {
+  const dates = getActiveTripDates(tripDates);
+  const status = getTripStatus(new Date(), dates);
   if (status.status === "during") return status.currentDate;
-  return TRIP_DATES[0];
+  return dates[0];
+}
+
+export function getCountdownLabel(
+  tripDates?: string[],
+  now = new Date()
+): string {
+  const dates = getActiveTripDates(tripDates);
+  const status = getTripStatus(now, dates);
+
+  if (status.status === "before") {
+    return `${status.daysUntil} days until departure`;
+  }
+
+  if (status.status === "during") {
+    return `Day ${status.dayNumber} of ${dates.length}`;
+  }
+
+  return "Trip complete";
 }
 
 export const DAY_TITLES: Record<string, string> = {

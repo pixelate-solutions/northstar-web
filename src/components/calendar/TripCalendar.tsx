@@ -19,6 +19,7 @@ import { useRouter } from "next/navigation";
 
 import { CalendarEventItem } from "@/components/calendar/CalendarEventItem";
 import { EventModal } from "@/components/schedule/EventModal";
+import { MobileDayNavigator } from "@/components/shared/MobileDayNavigator";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DaySummary } from "@/lib/types";
@@ -91,11 +92,29 @@ export function TripCalendar({ days }: { days: DaySummary[] }) {
   );
 
   const selectedDay = days.find((day) => day.id === selectedDayId) ?? days[0];
+  const selectedDayIndex = days.findIndex((day) => day.id === selectedDayId);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
+      <div className="space-y-3">
+        <MobileDayNavigator
+          className="sm:hidden"
+          days={days}
+          selectedIndex={selectedDayIndex >= 0 ? selectedDayIndex : 0}
+          onSelectIndex={(index) => {
+            if (index === null) {
+              return;
+            }
+
+            const day = days[index];
+            if (day) {
+              setSelectedDayId(day.id);
+            }
+          }}
+        />
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="hidden flex-wrap gap-2 sm:flex">
           {days.map((day) => (
             <button
               key={day.id}
@@ -114,10 +133,11 @@ export function TripCalendar({ days }: { days: DaySummary[] }) {
             </button>
           ))}
         </div>
-        <Button onClick={() => setModalOpen(true)}>
+        <Button className="w-full sm:w-auto" onClick={() => setModalOpen(true)}>
           <Plus className="size-4" />
           Add Event
         </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.45fr_0.8fr]">

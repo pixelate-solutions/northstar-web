@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { buildMetadata } from "@/lib/metadata";
 import { getDaysOverview } from "@/lib/server-data";
 
-export const metadata = buildMetadata("Days");
+export const metadata = buildMetadata("Trip");
 export const dynamic = "force-dynamic";
 
 export default async function DaysPage() {
@@ -15,7 +15,7 @@ export default async function DaysPage() {
     <div className="space-y-5">
       <PageHeader
         eyebrow="Trip Planning"
-        title="Days"
+        title="Trip"
         description="View the full route on the map or browse the itinerary by calendar."
       />
       <Tabs defaultValue="map" className="flex-col gap-5">

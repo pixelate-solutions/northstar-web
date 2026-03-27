@@ -201,6 +201,19 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   }, [filteredPins]);
 
   useEffect(() => {
+    const container = mobileCarouselRef.current;
+    if (!container) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      container.scrollTo({ left: 0, behavior: "auto" });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [filter]);
+
+  useEffect(() => {
     return () => {
       if (mobileCarouselFrameRef.current !== null) {
         cancelAnimationFrame(mobileCarouselFrameRef.current);

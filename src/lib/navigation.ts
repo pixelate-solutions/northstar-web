@@ -9,7 +9,8 @@ import {
 
 export const primaryNavItems = [
   { href: "/", label: "Dashboard", icon: Home },
-  { href: "/calendar", label: "Days", icon: CalendarDays },
+  { href: "/days", label: "Days", icon: MapPinned },
+  { href: "/calendar", label: "Trip", icon: CalendarDays },
   { href: "/packing", label: "Packing", icon: Package },
   { href: "/budget", label: "Budget", icon: DollarSign },
   { href: "/reminders", label: "Reminders", icon: Bell },
@@ -17,7 +18,8 @@ export const primaryNavItems = [
 
 export const mobileNavItems = [
   { href: "/", label: "Home", icon: Home },
-  { href: "/calendar", label: "Days", icon: MapPinned },
+  { href: "/days", label: "Days", icon: MapPinned },
+  { href: "/calendar", label: "Trip", icon: CalendarDays },
   { href: "/packing", label: "Packing", icon: Package },
   { href: "/budget", label: "Budget", icon: DollarSign },
   { href: "/reminders", label: "Reminders", icon: Bell },

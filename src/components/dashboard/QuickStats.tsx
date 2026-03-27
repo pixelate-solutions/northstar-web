@@ -33,13 +33,13 @@ export function QuickStats({ stats }: { stats: DashboardStats }) {
       {items.map((item) => {
         const Icon = item.icon;
         return (
-          <Card key={item.label} className="rounded-[1.75rem] border border-border/70 bg-card/80">
-            <CardContent className="flex items-center gap-4 py-5">
-              <div className="rounded-2xl bg-primary/10 p-3 text-primary">
+          <Card key={item.label} className="min-w-0 rounded-[1.75rem] border border-border/70 bg-card/80">
+            <CardContent className="flex min-w-0 items-center gap-4 py-5">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <Icon className="size-5" />
               </div>
-              <div>
-                <p className="text-2xl font-semibold tracking-tight">{item.value}</p>
+              <div className="min-w-0">
+                <p className="truncate text-2xl font-semibold tracking-tight">{item.value}</p>
                 <p className="text-sm text-muted-foreground">{item.label}</p>
               </div>
             </CardContent>

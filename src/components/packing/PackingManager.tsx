@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Printer } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { EmptyState } from "@/components/shared/EmptyState";
+import { MobileDayNavigator } from "@/components/shared/MobileDayNavigator";
 import { PackingCategory } from "@/components/packing/PackingCategory";
 import { PackingProgress } from "@/components/packing/PackingProgress";
 import { Button } from "@/components/ui/button";
@@ -85,6 +86,8 @@ export function PackingManager({
   }, [filteredItems]);
 
   const packedCount = items.filter((item) => Boolean(item.isPacked)).length;
+  const selectedDayIndex =
+    dayFilter === "all" ? null : days.findIndex((day) => String(day.id) === dayFilter);
 
   async function upsertItem(payload: Record<string, unknown>) {
     const response = await fetch(
@@ -187,11 +190,7 @@ export function PackingManager({
             <PackingProgress packed={packedCount} total={initialItems.length} />
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 rounded-[2rem] border border-border/70 bg-card/80 p-6">
-          <Button variant="outline" onClick={() => window.print()}>
-            <Printer className="size-4" />
-            Print List
-          </Button>
+        <div className="flex items-center justify-end rounded-[2rem] border border-border/70 bg-card/80 p-6">
           <Button
             onClick={() => {
               setEditingItem(null);
@@ -212,7 +211,24 @@ export function PackingManager({
             <TabsTrigger value="essential">Essential Only</TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="flex flex-wrap gap-2">
+        <MobileDayNavigator
+          className="sm:hidden"
+          days={days}
+          selectedIndex={selectedDayIndex}
+          allowWholeTrip
+          onSelectIndex={(index) => {
+            if (index === null) {
+              setDayFilter("all");
+              return;
+            }
+
+            const day = days[index];
+            if (day) {
+              setDayFilter(String(day.id));
+            }
+          }}
+        />
+        <div className="hidden flex-wrap gap-2 sm:flex">
           <button
             type="button"
             onClick={() => setDayFilter("all")}

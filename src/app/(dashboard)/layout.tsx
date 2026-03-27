@@ -1,10 +1,8 @@
-import { differenceInCalendarDays } from "date-fns";
-
 import { MobileHeader } from "@/components/nav/MobileHeader";
 import { Sidebar } from "@/components/nav/Sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { getDashboardBundle } from "@/lib/server-data";
-import { TRIP_END, TRIP_START } from "@/lib/trip-data";
+import { getCountdownLabel } from "@/lib/trip-data";
 
 export default async function DashboardLayout({
   children,
@@ -12,14 +10,10 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const bundle = await getDashboardBundle();
-  const now = new Date();
-
-  let countdownLabel = `${differenceInCalendarDays(TRIP_START, now)} days until departure`;
-  if (now >= TRIP_START && now <= TRIP_END) {
-    countdownLabel = `Day ${differenceInCalendarDays(now, TRIP_START) + 1} of 11`;
-  } else if (now > TRIP_END) {
-    countdownLabel = "Trip complete";
-  }
+  const countdownLabel = getCountdownLabel(
+    bundle.days.map((day) => day.date),
+    new Date()
+  );
 
   const totalBooked = bundle.expenses.reduce(
     (sum, expense) => sum + Number(expense.amount ?? 0),

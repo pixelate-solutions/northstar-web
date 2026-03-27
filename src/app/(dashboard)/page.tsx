@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const bundle = await getDashboardBundle();
-  const defaultDate = getDefaultDate();
+  const defaultDate = getDefaultDate(bundle.days.map((day) => day.date));
   const fallbackDate = bundle.days[0]?.date ?? defaultDate;
 
   return (

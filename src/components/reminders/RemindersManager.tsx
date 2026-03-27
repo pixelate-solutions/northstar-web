@@ -107,7 +107,7 @@ export function RemindersManager({
             }
           }}
           placeholder="Quick add a reminder and press Enter"
-          className="h-12 flex-1 rounded-2xl border border-input bg-input/30 px-4 text-sm outline-none"
+          className="h-12 flex-1 rounded-2xl border border-input bg-input/30 px-4 text-sm outline-none py-2"
         />
         <Button
           onClick={() => {

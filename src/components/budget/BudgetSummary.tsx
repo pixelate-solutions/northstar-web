@@ -17,13 +17,13 @@ export function BudgetSummary({ expenses }: { expenses: Expense[] }) {
   ).map(([name, value]) => ({ name, value }));
 
   return (
-    <Card className="rounded-[2rem] border border-border/70 bg-card/80">
+    <Card className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80">
       <CardHeader>
         <CardTitle>Category Breakdown</CardTitle>
       </CardHeader>
       <CardContent className="grid min-w-0 gap-4 lg:grid-cols-[1fr_0.9fr]">
-        <div className="h-72 min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-72 min-w-0 w-full">
+          <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={288}>
             <PieChart>
               <Pie
                 data={data}

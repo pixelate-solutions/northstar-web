@@ -5,7 +5,7 @@ export function getDashboardStats(
   bundle: AppDataBundle,
   selectedDate: string
 ): DashboardStats {
-  const status = getTripStatus();
+  const status = getTripStatus(new Date(), bundle.days.map((day) => day.date));
   const packingPercent = bundle.packingItems.length
     ? Math.round(
         (bundle.packingItems.filter((item) => item.isPacked).length /
