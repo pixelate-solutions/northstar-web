@@ -43,19 +43,7 @@ export default async function LandingPage() {
                 </Link>
                 <UserButton />
               </div>
-            ) : (
-              <>
-                <Link href="/sign-in">
-                  <Button variant="ghost" className="rounded-full">Sign In</Button>
-                </Link>
-                <Link href={primaryHref}>
-                  <Button className="rounded-full px-5">
-                    {primaryLabel}
-                    <ArrowRight className="size-4" />
-                  </Button>
-                </Link>
-              </>
-            )}
+            ) : null}
           </div>
         </header>
 
