@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, Menu, Plus } from "lucide-react";
+import { ChevronDown, Menu, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { primaryNavItems } from "@/lib/navigation";
 import { product } from "@/lib/product";
 import { cn } from "@/lib/utils";
@@ -47,7 +48,12 @@ export function MobileHeader({
   const [open, setOpen] = useState(false);
   const [switchingTrip, setSwitchingTrip] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createTripName, setCreateTripName] = useState("");
   const [creatingTrip, setCreatingTrip] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState(tripName);
+  const [renamingTrip, setRenamingTrip] = useState(false);
+  const defaultTripName = `New Trip ${trips.length + 1}`;
 
   useEffect(() => {
     if (!open) {
@@ -69,6 +75,16 @@ export function MobileHeader({
       window.removeEventListener("keydown", handleEscape);
     };
   }, [open]);
+
+  useEffect(() => {
+    setRenameValue(tripName);
+  }, [tripName]);
+
+  useEffect(() => {
+    if (!createDialogOpen) {
+      setCreateTripName("");
+    }
+  }, [createDialogOpen]);
 
   async function handleTripChange(nextTripId: number) {
     setSwitchingTrip(true);
@@ -99,7 +115,7 @@ export function MobileHeader({
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        name: `New Trip ${trips.length + 1}`,
+        name: createTripName.trim() || defaultTripName,
         totalDays: 7,
         importTemplate: false,
       }),
@@ -116,6 +132,35 @@ export function MobileHeader({
     setCreateDialogOpen(false);
     setOpen(false);
     toast.success("New trip created.");
+    router.refresh();
+  }
+
+  async function handleRenameTrip() {
+    const nextName = renameValue.trim();
+    if (!nextName) {
+      toast.error("Trip name is required.");
+      return;
+    }
+
+    setRenamingTrip(true);
+    const response = await fetch(`/api/trips/${activeTripId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name: nextName }),
+    });
+
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    setRenamingTrip(false);
+
+    if (!response.ok) {
+      toast.error(body?.error ?? "Unable to rename trip.");
+      return;
+    }
+
+    setRenameDialogOpen(false);
+    toast.success("Trip renamed.");
     router.refresh();
   }
 
@@ -169,59 +214,70 @@ export function MobileHeader({
             <h2 className="mt-1 text-xl font-bold tracking-tight">{tripName}</h2>
             <p className="text-sm text-muted-foreground">{countdownLabel}</p>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className="mt-4 w-full rounded-[1.25rem] border border-white/45 bg-white/70 px-4 py-3.5 text-left shadow-[0_12px_28px_rgba(18,43,74,0.08)] outline-none transition hover:bg-white/82 focus-visible:ring-2 focus-visible:ring-primary/30"
-                disabled={switchingTrip || creatingTrip}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                      Active Trip
-                    </p>
-                    <p className="mt-1 truncate text-base font-semibold text-foreground">
-                      {tripName}
-                    </p>
-                  </div>
-                  <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-                </div>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                sideOffset={8}
-                className="w-[min(22rem,calc(100vw-2rem))] rounded-[1.25rem] border border-white/60 bg-white/96 p-2 shadow-[0_22px_60px_rgba(17,46,72,0.14)] backdrop-blur-xl"
-              >
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="px-3 py-2 text-[11px] uppercase tracking-[0.26em] text-muted-foreground">
-                    Trips
-                  </DropdownMenuLabel>
-                  {trips.map((trip) => (
-                    <DropdownMenuItem
-                      key={trip.id}
-                      onClick={() => handleTripChange(trip.id)}
-                      className={cn(
-                        "cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground",
-                        trip.id === activeTripId && "bg-secondary/70 text-foreground"
-                      )}
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-[0.95rem] font-medium">{trip.name}</p>
-                        {trip.id === activeTripId ? (
-                          <p className="text-xs text-muted-foreground">Current trip</p>
-                        ) : null}
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => setCreateDialogOpen(true)}
-                  className="cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground"
+            <div className="mt-4 flex items-stretch gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className="min-w-0 flex-1 rounded-[1.25rem] border border-white/45 bg-white/70 px-4 py-3.5 text-left shadow-[0_12px_28px_rgba(18,43,74,0.08)] outline-none transition hover:bg-white/82 focus-visible:ring-2 focus-visible:ring-primary/30"
+                  disabled={switchingTrip || creatingTrip || renamingTrip}
                 >
-                  <Plus className="size-4" />
-                  <span>Add Trip</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+                        Active Trip
+                      </p>
+                      <p className="mt-1 truncate text-base font-semibold text-foreground">
+                        {tripName}
+                      </p>
+                    </div>
+                    <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                  </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  sideOffset={8}
+                  className="w-[min(22rem,calc(100vw-2rem))] rounded-[1.25rem] border border-white/60 bg-white/96 p-2 shadow-[0_22px_60px_rgba(17,46,72,0.14)] backdrop-blur-xl"
+                >
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="px-3 py-2 text-[11px] uppercase tracking-[0.26em] text-muted-foreground">
+                      Trips
+                    </DropdownMenuLabel>
+                    {trips.map((trip) => (
+                      <DropdownMenuItem
+                        key={trip.id}
+                        onClick={() => handleTripChange(trip.id)}
+                        className={cn(
+                          "cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground",
+                          trip.id === activeTripId && "bg-secondary/70 text-foreground"
+                        )}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-[0.95rem] font-medium">{trip.name}</p>
+                          {trip.id === activeTripId ? (
+                            <p className="text-xs text-muted-foreground">Current trip</p>
+                          ) : null}
+                        </div>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setCreateDialogOpen(true)}
+                    className="cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground"
+                  >
+                    <Plus className="size-4" />
+                    <span>Add Trip</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <button
+                type="button"
+                onClick={() => setRenameDialogOpen(true)}
+                className="inline-flex shrink-0 items-center justify-center rounded-[1.25rem] border border-white/45 bg-white/70 px-4 text-muted-foreground shadow-[0_12px_28px_rgba(18,43,74,0.08)] transition hover:bg-white/82 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/30"
+                aria-label="Rename active trip"
+              >
+                <Pencil className="size-4" />
+              </button>
+            </div>
           </div>
           <nav className="flex flex-col gap-1 p-3">
             {primaryNavItems.map((item) => {
@@ -265,6 +321,15 @@ export function MobileHeader({
               This will create a blank 7-day trip and switch your active workspace to it.
             </DialogDescription>
           </DialogHeader>
+          <div className="px-6 pt-5">
+            <Input
+              value={createTripName}
+              onChange={(event) => setCreateTripName(event.target.value)}
+              placeholder={defaultTripName}
+              maxLength={80}
+              autoFocus
+            />
+          </div>
           <div className="mt-6 flex flex-col-reverse gap-2 rounded-b-[1.6rem] border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
             <Button
               type="button"
@@ -276,6 +341,47 @@ export function MobileHeader({
             </Button>
             <Button type="button" onClick={handleCreateTrip} disabled={creatingTrip}>
               {creatingTrip ? "Creating..." : "Create Trip"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent
+          showCloseButton={false}
+          className="max-w-md rounded-[1.6rem] border border-slate-200 bg-white p-0 text-foreground shadow-[0_30px_90px_rgba(17,46,72,0.18)]"
+        >
+          <DialogHeader className="px-6 pt-6">
+            <DialogTitle className="text-xl font-semibold tracking-tight">
+              Rename trip
+            </DialogTitle>
+            <DialogDescription className="leading-7">
+              Update the name shown across your workspace and trip switcher.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 pt-5">
+            <Input
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              placeholder="Trip name"
+              maxLength={80}
+              autoFocus
+            />
+          </div>
+          <div className="mt-6 flex flex-col-reverse gap-2 rounded-b-[1.6rem] border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setRenameDialogOpen(false);
+                setRenameValue(tripName);
+              }}
+              disabled={renamingTrip}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleRenameTrip} disabled={renamingTrip}>
+              {renamingTrip ? "Saving..." : "Save Name"}
             </Button>
           </div>
         </DialogContent>

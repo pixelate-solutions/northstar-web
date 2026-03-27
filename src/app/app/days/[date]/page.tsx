@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -61,7 +61,13 @@ export default async function DayDetailPage({
     getDaysOverview(trip.id),
   ]);
 
-  if (!day) notFound();
+  if (!day) {
+    const fallbackDay = allDays[0];
+    if (fallbackDay) {
+      redirect(`/app/days/${fallbackDay.date}`);
+    }
+    notFound();
+  }
 
   const currentDayIndex = allDays.findIndex((item) => item.date === day.date);
   const previousDay = currentDayIndex > 0 ? allDays[currentDayIndex - 1] : null;

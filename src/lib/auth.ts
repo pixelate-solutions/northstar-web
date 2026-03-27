@@ -1,6 +1,5 @@
 import "server-only";
 
-import { cache } from "react";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { and, eq } from "drizzle-orm";
 
@@ -23,7 +22,7 @@ export async function getAuthenticatedClerkUserId() {
   return userId ?? null;
 }
 
-export const getOrCreateAppUser = cache(async (): Promise<AppUser | null> => {
+export async function getOrCreateAppUser(): Promise<AppUser | null> {
   const db = getDb();
   const clerkUserId = await getAuthenticatedClerkUserId();
 
@@ -70,7 +69,7 @@ export const getOrCreateAppUser = cache(async (): Promise<AppUser | null> => {
     .returning();
 
   return created ?? null;
-});
+}
 
 export async function getCurrentAppUser() {
   return getOrCreateAppUser();
