@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Route } from "lucide-react";
+import { ChevronLeft, ChevronRight, Route } from "lucide-react";
 import {
   MapContainer,
   Marker,
@@ -14,6 +14,13 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getCategoryLeafletIcon } from "@/components/map/categoryLeafletIcon";
 import { getCategoryConfig } from "@/lib/category-config";
 import type { DaySummary } from "@/lib/types";
@@ -90,6 +97,8 @@ function MapFlyTo({
 
 export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   const router = useRouter();
+  const mobileCarouselRef = useRef<HTMLDivElement>(null);
+  const mobileCarouselFrameRef = useRef<number | null>(null);
   const [filter, setFilter] = useState<number | "all">("all");
   const [activeEventId, setActiveEventId] = useState<number | null>(null);
   const [routeMode, setRouteMode] = useState(false);
@@ -97,6 +106,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   const [drivingRoute, setDrivingRoute] = useState<DrivingRoute | null>(null);
   const [routeStatus, setRouteStatus] = useState<"idle" | "loading" | "error">("idle");
   const [routeError, setRouteError] = useState<string | null>(null);
+  const [routePickerOpen, setRoutePickerOpen] = useState(false);
 
   const filteredDays = useMemo(
     () => days.filter((day) => filter === "all" || day.dayNumber === filter),
@@ -139,6 +149,13 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
     () => filteredPins.find((event) => event.id === routePointIds[1]) ?? null,
     [filteredPins, routePointIds]
   );
+  const mobileFilterIndex = useMemo(() => {
+    if (filter === "all") {
+      return -1;
+    }
+
+    return days.findIndex((day) => day.dayNumber === filter);
+  }, [days, filter]);
 
   const flyTarget = useMemo<{ center: [number, number] | null; zoom: number }>(() => {
     if (activePin) {
@@ -169,6 +186,27 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
       current.filter((id) => filteredPins.some((event) => event.id === id))
     );
   }, [filteredPins]);
+
+  useEffect(() => {
+    if (!filteredPins.length) {
+      setActiveEventId(null);
+      return;
+    }
+
+    setActiveEventId((current) =>
+      current && filteredPins.some((event) => event.id === current)
+        ? current
+        : filteredPins[0]!.id
+    );
+  }, [filteredPins]);
+
+  useEffect(() => {
+    return () => {
+      if (mobileCarouselFrameRef.current !== null) {
+        cancelAnimationFrame(mobileCarouselFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!routeMode || !routeStart || !routeEnd) {
@@ -234,39 +272,251 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
 
   function handlePinSelection(eventId: number) {
     setActiveEventId(eventId);
+  }
 
-    if (!routeMode) {
+  function clearRoute() {
+    setRouteMode(false);
+    setRoutePointIds([]);
+    setDrivingRoute(null);
+    setRouteStatus("idle");
+    setRouteError(null);
+  }
+
+  function handleRouteButtonClick() {
+    setRouteMode(true);
+    setRoutePickerOpen(true);
+  }
+
+  function handleRoutePointSelection(eventId: number) {
+    setRouteMode(true);
+    setRoutePointIds((current) => {
+      if (current.length === 0) {
+        return [eventId];
+      }
+
+      if (current.length === 1) {
+        if (current[0] === eventId) {
+          return current;
+        }
+
+        return [current[0], eventId];
+      }
+
+      if (current[0] === eventId) {
+        return [eventId];
+      }
+
+      return [current[1] === eventId ? current[0]! : current[1]!, eventId];
+    });
+    setActiveEventId(eventId);
+  }
+
+  function goToPreviousDay() {
+    if (filter === "all") {
       return;
     }
 
-    setRoutePointIds((current) => {
-      if (current.includes(eventId)) {
-        return current.filter((id) => id !== eventId);
-      }
+    if (mobileFilterIndex <= 0) {
+      setFilter("all");
+      setActiveEventId(null);
+      return;
+    }
 
-      if (current.length >= 2) {
-        return [current[1]!, eventId];
-      }
+    const previousDay = days[mobileFilterIndex - 1];
+    if (!previousDay) {
+      return;
+    }
 
-      return [...current, eventId];
-    });
+    setFilter(previousDay.dayNumber);
+    setActiveEventId(null);
   }
 
-  function toggleRouteMode() {
-    setRouteMode((current) => {
-      if (current) {
-        setRoutePointIds([]);
-        setDrivingRoute(null);
-        setRouteStatus("idle");
-        setRouteError(null);
+  function goToNextDay() {
+    if (filter === "all") {
+      const firstDay = days[0];
+      if (!firstDay) {
+        return;
       }
-      return !current;
+
+      setFilter(firstDay.dayNumber);
+      setActiveEventId(null);
+      return;
+    }
+
+    const nextDay = days[mobileFilterIndex + 1];
+    if (!nextDay) {
+      return;
+    }
+
+    setFilter(nextDay.dayNumber);
+    setActiveEventId(null);
+  }
+
+  function syncActivePinFromCarousel() {
+    const container = mobileCarouselRef.current;
+    if (!container) {
+      return;
+    }
+
+    const cards = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-pin-id]")
+    );
+    if (!cards.length) {
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const containerCenter = containerRect.left + containerRect.width / 2;
+
+    let closestId: number | null = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (const card of cards) {
+      const rect = card.getBoundingClientRect();
+      const cardCenter = rect.left + rect.width / 2;
+      const distance = Math.abs(cardCenter - containerCenter);
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestId = Number(card.dataset.pinId);
+      }
+    }
+
+    if (closestId !== null) {
+      setActiveEventId((current) => (current === closestId ? current : closestId));
+    }
+  }
+
+  function handleMobileCarouselScroll() {
+    if (mobileCarouselFrameRef.current !== null) {
+      cancelAnimationFrame(mobileCarouselFrameRef.current);
+    }
+
+    mobileCarouselFrameRef.current = requestAnimationFrame(() => {
+      syncActivePinFromCarousel();
+      mobileCarouselFrameRef.current = null;
     });
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[0.9fr_1.4fr] max-lg:h-[calc(100dvh-12rem)] max-lg:min-h-[36rem] max-lg:overflow-hidden">
-      <div className="space-y-4 max-lg:min-h-0 max-lg:overflow-y-auto max-lg:pb-[20rem]">
+    <div className="space-y-4 lg:grid lg:grid-cols-[0.9fr_1.4fr] lg:gap-6 lg:space-y-0">
+      <div className="space-y-3 lg:hidden">
+        <div className="flex items-center justify-between gap-3 rounded-[1.35rem] border border-white/45 bg-white/72 px-3 py-2 shadow-[0_18px_42px_rgba(191,102,62,0.08)] backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={goToPreviousDay}
+            disabled={filter === "all"}
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-white/60 bg-white/92 text-foreground shadow-[0_10px_24px_rgba(28,31,46,0.08)] transition disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Previous day"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (filter === "all") {
+                return;
+              }
+
+              const currentDay = days.find((day) => day.dayNumber === filter);
+              if (currentDay) {
+                router.push(`/days/${currentDay.date}`);
+              }
+            }}
+            className="min-w-0 flex-1 rounded-[1.1rem] border border-white/55 bg-white/88 px-4 py-2 text-center transition hover:bg-white disabled:pointer-events-none"
+            disabled={filter === "all"}
+          >
+            <p className="text-xs uppercase tracking-[0.2em] text-primary/75">
+              {filter === "all" ? "Whole Trip" : "Current Day"}
+            </p>
+            <p className="truncate text-sm font-semibold text-foreground">
+              {filter === "all"
+                ? "All Days"
+                : `Day ${filter} · ${
+                    days.find((day) => day.dayNumber === filter)?.title ?? "Trip Day"
+                  }`}
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={goToNextDay}
+            disabled={filter !== "all" && mobileFilterIndex >= days.length - 1}
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-white/60 bg-white/92 text-foreground shadow-[0_10px_24px_rgba(28,31,46,0.08)] transition disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Next day"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 rounded-[1.35rem] border border-white/45 bg-white/70 px-4 py-3 shadow-[0_18px_42px_rgba(191,102,62,0.08)] backdrop-blur-xl">
+          <div>
+            <p className="text-xs uppercase tracking-[0.24em] text-primary/80">
+              {filter === "all" ? "Visible Pins" : `Day ${filter} Pins`}
+            </p>
+            <p className="text-sm font-medium">
+              {filteredPins.length} location{filteredPins.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRouteButtonClick}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition ${
+              routeMode
+                ? "border-primary/30 bg-primary/10 text-primary"
+                : "border-border/70 bg-white text-muted-foreground hover:border-primary/25 hover:text-foreground"
+            }`}
+          >
+            <Route className="size-4" />
+            Route
+          </button>
+        </div>
+
+        {routeMode ? (
+          <div className="rounded-[1.35rem] border border-white/45 bg-white/68 px-4 py-3 text-sm shadow-[0_18px_42px_rgba(191,102,62,0.08)] backdrop-blur-xl">
+            <p className="text-muted-foreground">
+              <span className="font-medium text-foreground">From:</span>{" "}
+              {routeStart ? routeStart.title : "Choose a start pin"}
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              <span className="font-medium text-foreground">To:</span>{" "}
+              {routeEnd ? routeEnd.title : "Choose a destination pin"}
+            </p>
+            {routeStatus === "loading" ? (
+              <p className="mt-2 text-muted-foreground">Calculating drive time...</p>
+            ) : null}
+            {drivingRoute && routeStart && routeEnd ? (
+              <div className="mt-2 space-y-1">
+                <p className="font-medium text-foreground">
+                  {formatDriveDuration(drivingRoute.durationSeconds)} drive
+                </p>
+                <p className="text-muted-foreground">
+                  {formatDriveDistance(drivingRoute.distanceMeters)} via road
+                </p>
+                <a
+                  href={getDirectionsHref(routeStart, routeEnd)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 font-medium text-primary"
+                >
+                  Open route in Maps →
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setRoutePickerOpen(true)}
+                  className="block font-medium text-foreground/80"
+                >
+                  Edit route
+                </button>
+              </div>
+            ) : null}
+            {routeError ? <p className="mt-2 text-destructive">{routeError}</p> : null}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="hidden space-y-4 lg:block">
         <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 scrollbar-hide">
           <button
             type="button"
@@ -330,7 +580,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                 </div>
                 <button
                   type="button"
-                  onClick={toggleRouteMode}
+                  onClick={handleRouteButtonClick}
                   className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition ${
                     routeMode
                       ? "border-primary/30 bg-primary/10 text-primary"
@@ -375,6 +625,13 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                       >
                         Open route in Maps →
                       </a>
+                      <button
+                        type="button"
+                        onClick={() => setRoutePickerOpen(true)}
+                        className="block font-medium text-foreground/80"
+                      >
+                        Edit route
+                      </button>
                     </div>
                   ) : null}
 
@@ -442,12 +699,12 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
         </Card>
       </div>
 
-      <div className="overflow-clip rounded-[2rem] border border-border/70 max-lg:fixed max-lg:bottom-4 max-lg:left-4 max-lg:right-4 max-lg:z-20 max-lg:border-white/55 max-lg:bg-white/72 max-lg:shadow-[0_26px_70px_rgba(28,31,46,0.18)] max-lg:backdrop-blur-2xl lg:sticky lg:top-6 lg:self-start">
+      <div className="relative overflow-clip rounded-[2rem] border border-border/70 lg:sticky lg:top-6 lg:self-start">
         <MapContainer
           center={route[0] ?? [36.1699, -115.1398]}
           zoom={5}
           scrollWheelZoom
-          className="h-[17rem] w-full sm:h-[21rem] lg:h-[42rem]"
+          className="h-[calc(100dvh-18rem)] min-h-[28rem] w-full sm:h-[32rem] lg:h-[42rem]"
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -576,7 +833,149 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
             ))
           )}
         </MapContainer>
+
+        <div className="absolute inset-x-0 bottom-0 z-[500] px-4 pb-4 lg:hidden">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 rounded-b-[2rem] bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(250,247,242,0.88)_68%,rgba(250,247,242,0.98)_100%)]" />
+          <div className="relative">
+            <div
+              ref={mobileCarouselRef}
+              onScroll={handleMobileCarouselScroll}
+              className="scrollbar-hide min-w-0 snap-x snap-mandatory overflow-x-auto"
+              style={{
+                WebkitMaskImage:
+                  "linear-gradient(90deg, transparent 0, black 1.5rem, black calc(100% - 1.5rem), transparent 100%)",
+                maskImage:
+                  "linear-gradient(90deg, transparent 0, black 1.5rem, black calc(100% - 1.5rem), transparent 100%)",
+              }}
+            >
+              <div className="flex gap-3 pb-1">
+                <div
+                  aria-hidden="true"
+                  className="w-[calc(50vw-5.75rem)] shrink-0"
+                />
+                {filteredPins.map((event) => {
+                  const isActive = event.id === activeEventId;
+                  const isRouteSelected = routePointIds.includes(event.id);
+
+                  return (
+                    <button
+                      key={event.id}
+                      data-pin-id={event.id}
+                      type="button"
+                      onClick={() => handlePinSelection(event.id)}
+                      className={`w-[calc(100vw-12rem)] min-w-[10.25rem] max-w-[11.5rem] shrink-0 snap-center rounded-[1.2rem] border px-3 py-2.5 text-left shadow-[0_16px_30px_rgba(28,31,46,0.12)] backdrop-blur-xl transition ${
+                        isRouteSelected
+                          ? "border-sky-400/55 bg-sky-100"
+                          : isActive
+                          ? "border-primary/45 bg-amber-50"
+                          : "border-white/70 bg-white"
+                      }`}
+                    >
+                      <p className="truncate text-sm font-medium">{event.title}</p>
+                      <p className="mt-1 truncate text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                        {formatDateMedium(event.dayDate)}
+                      </p>
+                      <p className="mt-1 text-sm text-foreground">
+                        {formatTimeRange(event.startTime, event.endTime)}
+                      </p>
+                    </button>
+                  );
+                })}
+                <div
+                  aria-hidden="true"
+                  className="w-[calc(50vw-5.75rem)] shrink-0"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+
+      <Dialog open={routePickerOpen} onOpenChange={setRoutePickerOpen}>
+        <DialogContent className="max-w-[calc(100%-1.25rem)] rounded-[1.5rem] border border-white/50 bg-white/95 p-0 sm:max-w-lg">
+          <DialogHeader className="px-5 pt-5">
+            <DialogTitle>Build Route</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Choose any two visible locations to compare driving time.
+            </p>
+          </DialogHeader>
+
+          <div className="space-y-3 px-5 pb-4">
+            <div className="grid gap-2 rounded-[1.25rem] border border-border/70 bg-secondary/30 p-3 text-sm">
+              <p className="text-muted-foreground">
+                <span className="font-medium text-foreground">From:</span>{" "}
+                {routeStart ? routeStart.title : "Not selected"}
+              </p>
+              <p className="text-muted-foreground">
+                <span className="font-medium text-foreground">To:</span>{" "}
+                {routeEnd ? routeEnd.title : "Not selected"}
+              </p>
+            </div>
+
+            <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+              {filteredPins.map((event) => {
+                const config = getCategoryConfig(event.category);
+                const isSelected = routePointIds.includes(event.id);
+
+                return (
+                  <button
+                    key={`route-${event.id}`}
+                    type="button"
+                    onClick={() => handleRoutePointSelection(event.id)}
+                    className={`w-full rounded-[1.25rem] border p-3 text-left transition ${
+                      isSelected
+                        ? "border-sky-400/45 bg-sky-500/10"
+                        : "border-border/70 bg-white hover:border-primary/25 hover:bg-secondary/40"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium">{event.title}</p>
+                        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                          Day {event.dayNumber} · {formatTimeRange(event.startTime, event.endTime)}
+                        </p>
+                      </div>
+                      <Badge className="shrink-0 bg-secondary text-foreground">
+                        {isSelected
+                          ? routePointIds[0] === event.id
+                            ? "Start"
+                            : "End"
+                          : config.label}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {getEventMapLabel(event)}
+                    </p>
+                  </button>
+                );
+              })}
+
+              {filteredPins.length === 0 ? (
+                <div className="rounded-[1.25rem] border border-dashed border-border/80 bg-secondary/30 p-4 text-sm text-muted-foreground">
+                  No mapped locations are available for this selection yet.
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <DialogFooter className="rounded-b-[1.5rem]">
+            <button
+              type="button"
+              onClick={clearRoute}
+              className="inline-flex min-h-10 items-center justify-center rounded-full border border-border/70 bg-white px-4 text-sm font-medium text-foreground transition hover:bg-secondary/40"
+            >
+              Clear route
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoutePickerOpen(false)}
+              className="inline-flex min-h-10 items-center justify-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+            >
+              Done
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
