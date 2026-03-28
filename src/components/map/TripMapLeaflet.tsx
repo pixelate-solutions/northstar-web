@@ -22,14 +22,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getCategoryLeafletIcon } from "@/components/map/categoryLeafletIcon";
-import { LocationPopup } from "@/components/map/LocationPopup";
 import { getCategoryConfig } from "@/lib/category-config";
 import type { DaySummary } from "@/lib/types";
 import { formatDateMedium, formatTimeRange } from "@/lib/utils";
 
 type MapPin = {
   id: string;
-  source: "location" | "event";
   title: string;
   category: string;
   lat: number;
@@ -43,7 +41,6 @@ type MapPin = {
   dayNumber: number;
   dayTitle: string;
   dayDate: string;
-  locationRecord: DaySummary["locations"][number] | null;
 };
 
 interface DrivingRoute {
@@ -70,35 +67,9 @@ function getDirectionsHref(start: MapPin, end: MapPin) {
   return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
 }
 
-function createLocationPin(day: DaySummary, location: DaySummary["locations"][number]): MapPin {
-  return {
-    id: `location-${location.id}`,
-    source: "location",
-    title: location.name,
-    category: location.type,
-    lat: Number(location.lat),
-    lng: Number(location.lng),
-    locationLabel: null,
-    description: location.description,
-    tip: location.tip,
-    mapsHref:
-      location.googleMapsUrl ??
-      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        location.name
-      )}`,
-    timeLabel: null,
-    dayId: day.id,
-    dayNumber: day.dayNumber,
-    dayTitle: day.title,
-    dayDate: day.date,
-    locationRecord: location,
-  };
-}
-
 function createEventPin(day: DaySummary, event: DaySummary["events"][number]): MapPin {
   return {
     id: `event-${event.id}`,
-    source: "event",
     title: event.title,
     category: event.category,
     lat: Number(event.lat),
@@ -114,20 +85,13 @@ function createEventPin(day: DaySummary, event: DaySummary["events"][number]): M
     dayNumber: day.dayNumber,
     dayTitle: day.title,
     dayDate: day.date,
-    locationRecord: null,
   };
 }
 
 function getDayPins(day: DaySummary): MapPin[] {
-  const eventPins = day.events
+  return day.events
     .filter((event) => hasMapCoordinates(event))
     .map((event) => createEventPin(day, event));
-
-  if (eventPins.length > 0) {
-    return eventPins;
-  }
-
-  return day.locations.map((location) => createLocationPin(day, location));
 }
 
 function formatDriveDuration(seconds: number) {
@@ -518,10 +482,10 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
         <div className="flex items-center justify-between gap-3 rounded-[1.35rem] border border-white/45 bg-white/70 px-4 py-3 shadow-[0_18px_42px_rgba(191,102,62,0.08)] backdrop-blur-xl">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-primary/80">
-              {filter === "all" ? "Visible Pins" : `Day ${filter} Pins`}
+              {filter === "all" ? "Visible Stops" : `Day ${filter} Stops`}
             </p>
             <p className="text-sm font-medium">
-              {filteredPins.length} location{filteredPins.length === 1 ? "" : "s"}
+              {filteredPins.length} stop{filteredPins.length === 1 ? "" : "s"}
             </p>
           </div>
           <button
@@ -622,10 +586,10 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-primary/80">
-                  {filter === "all" ? "Visible Pins" : `Day ${filter} Pins`}
+                  {filter === "all" ? "Visible Stops" : `Day ${filter} Stops`}
                 </p>
                 <h3 className="text-lg font-semibold">
-                  {filteredPins.length} location{filteredPins.length === 1 ? "" : "s"}
+                  {filteredPins.length} stop{filteredPins.length === 1 ? "" : "s"}
                 </h3>
               </div>
               <Badge className="bg-secondary/70 text-foreground">
@@ -756,7 +720,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
 
               {filteredPins.length === 0 ? (
                 <div className="rounded-[1.35rem] border border-dashed border-border/80 bg-secondary/35 p-4 text-sm text-muted-foreground">
-                  No mapped locations are available for this selection yet.
+                  No mapped itinerary stops are available for this selection yet.
                 </div>
               ) : null}
             </div>
@@ -794,10 +758,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                   event.lng !== null
               )
               .map((event) => createEventPin(day, event));
-            const hikeLocationPins = day.locations
-              .filter((location) => location.type === "hike")
-              .map((location) => createLocationPin(day, location));
-            const hikePins = hikeEventPins.length > 0 ? hikeEventPins : hikeLocationPins;
+            const hikePins = hikeEventPins;
 
             if (hikePins.length < 2) return null;
 
@@ -856,60 +817,51 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                 }}
               >
                 <Popup minWidth={160} maxWidth={240}>
-                  {pin.locationRecord ? (
-                    <div className="space-y-3">
-                      <LocationPopup location={pin.locationRecord} />
-                      <p style={{ fontSize: 11, color: "#888" }}>
-                        Day {pin.dayNumber}: {pin.dayTitle}
+                  <>
+                    <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
+                      {pin.title}
+                    </p>
+                    <p
+                      style={{
+                        fontSize: 10,
+                        color: "#888",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.1em",
+                        marginBottom: 6,
+                      }}
+                    >
+                      {getCategoryConfig(pin.category).label}
+                    </p>
+                    {pin.timeLabel ? (
+                      <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
+                        {pin.timeLabel}
                       </p>
-                    </div>
-                  ) : (
-                    <>
-                      <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
-                        {pin.title}
+                    ) : null}
+                    <p style={{ fontSize: 13, marginBottom: 4 }}>
+                      {getPinMapLabel(pin)}
+                    </p>
+                    {pin.description ? (
+                      <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
+                        {pin.description}
                       </p>
-                      <p
-                        style={{
-                          fontSize: 10,
-                          color: "#888",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.1em",
-                          marginBottom: 6,
-                        }}
-                      >
-                        {getCategoryConfig(pin.category).label}
+                    ) : null}
+                    {pin.tip ? (
+                      <p style={{ fontSize: 12, color: "#666", fontStyle: "italic", marginBottom: 4 }}>
+                        {pin.tip}
                       </p>
-                      {pin.timeLabel ? (
-                        <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
-                          {pin.timeLabel}
-                        </p>
-                      ) : null}
-                      <p style={{ fontSize: 13, marginBottom: 4 }}>
-                        {getPinMapLabel(pin)}
-                      </p>
-                      {pin.description ? (
-                        <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
-                          {pin.description}
-                        </p>
-                      ) : null}
-                      {pin.tip ? (
-                        <p style={{ fontSize: 12, color: "#666", fontStyle: "italic", marginBottom: 4 }}>
-                          {pin.tip}
-                        </p>
-                      ) : null}
-                      <p style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
-                        Day {pin.dayNumber}: {pin.dayTitle}
-                      </p>
-                      <a
-                        href={pin.mapsHref}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}
-                      >
-                        Open in Maps →
-                      </a>
-                    </>
-                  )}
+                    ) : null}
+                    <p style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+                      Day {pin.dayNumber}: {pin.dayTitle}
+                    </p>
+                    <a
+                      href={pin.mapsHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}
+                    >
+                      Open in Maps →
+                    </a>
+                  </>
                 </Popup>
               </Marker>
             ))
@@ -979,7 +931,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
           <DialogHeader className="px-5 pt-5">
             <DialogTitle>Build Route</DialogTitle>
             <p className="text-sm text-muted-foreground">
-              Choose any two visible locations to compare driving time.
+              Choose any two visible itinerary stops to compare driving time.
             </p>
           </DialogHeader>
 
@@ -1035,7 +987,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
 
               {filteredPins.length === 0 ? (
                 <div className="rounded-[1.25rem] border border-dashed border-border/80 bg-secondary/30 p-4 text-sm text-muted-foreground">
-                  No mapped locations are available for this selection yet.
+                  No mapped itinerary stops are available for this selection yet.
                 </div>
               ) : null}
             </div>

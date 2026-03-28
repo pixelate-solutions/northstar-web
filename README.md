@@ -47,6 +47,23 @@ STRIPE_PRICE_ID=
 STRIPE_WEBHOOK_SECRET=
 
 OPENWEATHER_API_KEY=
+OPENAI_API_KEY=
+
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
+GOOGLE_SYNC_ENCRYPTION_SECRET=
+
+BOOKING_COM_AFFILIATE_ID=
+BOOKING_COM_API_TOKEN=
+
+SANDBOX_OR_PRODUCTION=sandbox
+
+DUFFEL_SANDBOX_API_TOKEN=
+DUFFEL_PRODUCTION_API_TOKEN=
+
+VIATOR_SANDBOX_API_KEY=
+VIATOR_PRODUCTION_API_KEY=
 ```
 
 Then generate and apply the database changes:
@@ -67,6 +84,24 @@ Start development:
 ```bash
 npm run dev
 ```
+
+## AI Concierge
+
+Northstar now includes an in-app AI concierge inside `/app` that can:
+
+- plan and edit the active trip in natural language
+- research live travel options with OpenAI web search
+- add itinerary events, reminders, expenses, packing items, and locations
+- request approval for external actions like Google account connection or booking handoff
+- import Google reservation context once Gmail and Google Calendar are connected
+
+To enable the AI stack locally, add `OPENAI_API_KEY` and run the generated migration:
+
+```bash
+npm run db:migrate
+```
+
+Google sync and provider-backed booking scaffolding require their respective credentials. If those env vars are missing, the UI still works, but external sync/booking flows stay approval-only or unavailable.
 
 ## Billing Flow
 

@@ -1,9 +1,9 @@
 export const product = {
   name: "Northstar",
   description:
-    "Plan smarter trips with a structured itinerary builder that turns scattered travel ideas into a clear, organized plan.",
+    "Plan smarter trips with an AI concierge that researches, organizes, and updates your itinerary inside one structured travel workspace.",
   shortDescription:
-    "A clean travel planning workspace for building organized vacations from first idea to final itinerary.",
+    "A clean travel planning workspace with an AI concierge for building organized vacations from first idea to final itinerary.",
   priceLabel: "$49",
   priceDescription: "One-time purchase. Lifetime access to the core planning workspace.",
   stripeProductName: "Northstar Lifetime",
@@ -12,9 +12,9 @@ export const product = {
 
 export const landingFeatureHighlights = [
   {
-    title: "Structured itinerary builder",
+    title: "AI planning concierge",
     description:
-      "Organize every day, stop, activity, and note inside a single trip workspace.",
+      "Plan in natural language, research live options, and let Northstar update the active trip for you.",
   },
   {
     title: "Day-by-day planning",
@@ -22,14 +22,14 @@ export const landingFeatureHighlights = [
       "Map each travel day, keep key logistics visible, and make edits without losing the full picture.",
   },
   {
-    title: "Activities, reminders, and budget",
+    title: "Budget, packing, and reservations",
     description:
-      "Track bookings, checklists, expenses, and logistics next to the itinerary they belong to.",
+      "Track bookings, checklists, expenses, reservations, and logistics next to the itinerary they belong to.",
   },
   {
-    title: "Reusable trip templates",
+    title: "Booking assistance",
     description:
-      "Start with a proven outline, then customize it into a trip that matches your route and pace.",
+      "Compare options, sync reservations, and move into approval-based booking flows without leaving the app.",
   },
 ] as const;
 
@@ -54,7 +54,7 @@ export const landingFaqs = [
   {
     question: "Will AI features be included?",
     answer:
-      "Core planning is included for life. Optional AI features can be added later as a separate upgrade.",
+      "Yes. Northstar AI is built into the planning workspace for natural-language trip edits, research, budgets, packing help, reservation sync, and booking assistance.",
   },
   {
     question: "Can I export my itinerary?",

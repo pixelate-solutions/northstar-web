@@ -58,7 +58,13 @@ function getIsMobileViewport() {
   return typeof window !== "undefined" && window.innerWidth < 640;
 }
 
-export function TripCalendar({ days }: { days: DaySummary[] }) {
+export function TripCalendar({
+  days,
+  canEdit = true,
+}: {
+  days: DaySummary[];
+  canEdit?: boolean;
+}) {
   const router = useRouter();
   const isMobileViewport = useSyncExternalStore(
     subscribeToViewport,
@@ -133,10 +139,12 @@ export function TripCalendar({ days }: { days: DaySummary[] }) {
             </button>
           ))}
         </div>
-        <Button className="w-full sm:w-auto" onClick={() => setModalOpen(true)}>
-          <Plus className="size-4" />
-          Add Event
-        </Button>
+        {canEdit ? (
+          <Button className="w-full sm:w-auto" onClick={() => setModalOpen(true)}>
+            <Plus className="size-4" />
+            Add Event
+          </Button>
+        ) : null}
         </div>
       </div>
 
@@ -247,15 +255,17 @@ export function TripCalendar({ days }: { days: DaySummary[] }) {
         </Card>
       </div>
 
-      <EventModal
-        key={`calendar-${selectedDayId}-${modalOpen ? "open" : "closed"}`}
-        dayId={selectedDayId}
-        date={selectedDay?.date}
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        nextSortOrder={(selectedDay?.events.length ?? 0) + 1}
-        onSaved={() => router.refresh()}
-      />
+      {canEdit ? (
+        <EventModal
+          key={`calendar-${selectedDayId}-${modalOpen ? "open" : "closed"}`}
+          dayId={selectedDayId}
+          date={selectedDay?.date}
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          nextSortOrder={(selectedDay?.events.length ?? 0) + 1}
+          onSaved={() => router.refresh()}
+        />
+      ) : null}
     </div>
   );
 }

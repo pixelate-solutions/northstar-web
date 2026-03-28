@@ -11,6 +11,7 @@ interface ReminderCardProps {
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  editable?: boolean;
 }
 
 const priorityStyles = {
@@ -24,6 +25,7 @@ export function ReminderCard({
   onToggle,
   onEdit,
   onDelete,
+  editable = true,
 }: ReminderCardProps) {
   return (
     <div className="rounded-[1.5rem] border border-border/60 bg-secondary/30 p-4">
@@ -45,17 +47,19 @@ export function ReminderCard({
             Due {reminder.dueDate ?? "whenever"}
           </p>
         </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon-sm" onClick={onToggle}>
-            <CheckCircle2 className="size-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={onEdit}>
-            <Pencil className="size-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={onDelete}>
-            <Trash2 className="size-4" />
-          </Button>
-        </div>
+        {editable ? (
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon-sm" onClick={onToggle}>
+              <CheckCircle2 className="size-4" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" onClick={onEdit}>
+              <Pencil className="size-4" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" onClick={onDelete}>
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

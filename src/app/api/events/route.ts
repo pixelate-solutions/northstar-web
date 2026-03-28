@@ -47,7 +47,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const context = await requireRouteTripContext();
+  const context = await requireRouteTripContext({ minimumRole: "collaborator" });
   if ("error" in context) {
     return context.error;
   }

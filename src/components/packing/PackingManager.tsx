@@ -53,9 +53,11 @@ function getPackingForm(initialItem: PackingItemType | null) {
 export function PackingManager({
   initialItems,
   days,
+  canEdit = true,
 }: {
   initialItems: PackingItemType[];
   days: DaySummary[];
+  canEdit?: boolean;
 }) {
   const router = useRouter();
   const [items, setItems] = useState(initialItems);
@@ -191,15 +193,17 @@ export function PackingManager({
           </div>
         </div>
         <div className="flex items-center justify-end rounded-[2rem] border border-border/70 bg-card/80 p-6">
-          <Button
-            onClick={() => {
-              setEditingItem(null);
-              setModalOpen(true);
-            }}
-          >
-            <Plus className="size-4" />
-            Add Item
-          </Button>
+          {canEdit ? (
+            <Button
+              onClick={() => {
+                setEditingItem(null);
+                setModalOpen(true);
+              }}
+            >
+              <Plus className="size-4" />
+              Add Item
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -265,6 +269,7 @@ export function PackingManager({
               key={category}
               category={category}
               items={items}
+              editable={canEdit}
               onToggle={(item) => void toggleItem(item)}
               onEdit={(item) => {
                 setEditingItem(item);
@@ -278,23 +283,29 @@ export function PackingManager({
       ) : (
         <EmptyState
           title="No packing items match this filter"
-          description="Try a different filter or add a new item."
-          actionLabel="Add Item"
-          onAction={() => setModalOpen(true)}
+          description={
+            canEdit
+              ? "Try a different filter or add a new item."
+              : "Try a different filter."
+          }
+          actionLabel={canEdit ? "Add Item" : undefined}
+          onAction={canEdit ? () => setModalOpen(true) : undefined}
         />
       )}
 
-      <PackingItemDialog
-        key={`${editingItem?.id ?? "new"}-${modalOpen ? "open" : "closed"}`}
-        open={modalOpen}
-        onOpenChange={(open) => {
-          setModalOpen(open);
-          if (!open) setEditingItem(null);
-        }}
-        days={days}
-        initialItem={editingItem}
-        onSubmit={(payload) => void upsertItem(payload)}
-      />
+      {canEdit ? (
+        <PackingItemDialog
+          key={`${editingItem?.id ?? "new"}-${modalOpen ? "open" : "closed"}`}
+          open={modalOpen}
+          onOpenChange={(open) => {
+            setModalOpen(open);
+            if (!open) setEditingItem(null);
+          }}
+          days={days}
+          initialItem={editingItem}
+          onSubmit={(payload) => void upsertItem(payload)}
+        />
+      ) : null}
     </div>
   );
 }

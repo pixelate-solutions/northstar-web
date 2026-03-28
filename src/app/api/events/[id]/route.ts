@@ -14,7 +14,7 @@ function revalidateAppPaths() {
 }
 
 async function getOwnedEvent(eventId: number) {
-  const context = await requireRouteTripContext();
+  const context = await requireRouteTripContext({ minimumRole: "collaborator" });
   if ("error" in context) {
     return context;
   }

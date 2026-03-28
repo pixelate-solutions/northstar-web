@@ -178,6 +178,7 @@ export async function getAppShellData(): Promise<AppShellData | null> {
     appUser: refreshedContext?.appUser ?? context.appUser,
     trips: refreshedContext?.trips ?? context.trips,
     activeTrip,
+    activeTripRole: refreshedContext?.activeTripRole ?? context.activeTripRole ?? activeTrip.accessRole,
     bundle,
   };
 }

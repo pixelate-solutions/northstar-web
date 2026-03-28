@@ -3,8 +3,18 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { getCurrentTripContext, isClerkConfigured } from "@/lib/auth";
 import { ensureStarterTrip } from "@/lib/trips";
+import type { TripAccessRole } from "@/lib/types";
 
-export async function requireRouteTripContext(options?: { requirePaid?: boolean }) {
+const TRIP_ROLE_LEVELS: Record<TripAccessRole, number> = {
+  viewer: 1,
+  collaborator: 2,
+  owner: 3,
+};
+
+export async function requireRouteTripContext(options?: {
+  requirePaid?: boolean;
+  minimumRole?: TripAccessRole;
+}) {
   const db = getDb();
   if (!db) {
     return {
@@ -44,16 +54,34 @@ export async function requireRouteTripContext(options?: { requirePaid?: boolean 
     };
   }
 
+  const activeTripRole = context.activeTripRole ?? activeTrip.accessRole;
+  const minimumRole = options?.minimumRole ?? "viewer";
+  if (
+    !activeTripRole ||
+    TRIP_ROLE_LEVELS[activeTripRole] < TRIP_ROLE_LEVELS[minimumRole]
+  ) {
+    return {
+      error: NextResponse.json(
+        { error: minimumRole === "owner" ? "Only the trip owner can do that." : "You do not have permission to edit this trip." },
+        { status: 403 }
+      ),
+    };
+  }
+
   return {
     db,
     appUser: context.appUser,
     activeTrip,
+    activeTripRole,
     trips: context.trips,
   };
 }
 
-export async function requireOwnedDay(date: string) {
-  const context = await requireRouteTripContext();
+export async function requireOwnedDay(
+  date: string,
+  options?: { minimumRole?: TripAccessRole }
+) {
+  const context = await requireRouteTripContext({ minimumRole: options?.minimumRole ?? "collaborator" });
   if ("error" in context) {
     return context;
   }

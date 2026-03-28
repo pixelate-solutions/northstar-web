@@ -3,7 +3,7 @@ import { TripMap } from "@/components/map/TripMap";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { buildMetadata } from "@/lib/metadata";
-import { getCurrentAppUser } from "@/lib/auth";
+import { getCurrentTripContext } from "@/lib/auth";
 import { getDaysOverview } from "@/lib/server-data";
 import { ensureStarterTrip } from "@/lib/trips";
 
@@ -11,17 +11,18 @@ export const metadata = buildMetadata("Trip");
 export const dynamic = "force-dynamic";
 
 export default async function TripPage() {
-  const appUser = await getCurrentAppUser();
-  if (!appUser) {
+  const context = await getCurrentTripContext();
+  if (!context) {
     return null;
   }
 
-  const trip = await ensureStarterTrip(appUser);
+  const trip = context.activeTrip ?? (await ensureStarterTrip(context.appUser));
   if (!trip) {
     return null;
   }
 
   const days = await getDaysOverview(trip.id);
+  const canEdit = (context.activeTripRole ?? trip.accessRole) !== "viewer";
 
   return (
     <div className="space-y-5">
@@ -51,7 +52,7 @@ export default async function TripPage() {
           <TripMap days={days} />
         </TabsContent>
         <TabsContent value="calendar" className="w-full">
-          <TripCalendar days={days} />
+          <TripCalendar days={days} canEdit={canEdit} />
         </TabsContent>
       </Tabs>
     </div>

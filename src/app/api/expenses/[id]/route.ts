@@ -6,7 +6,7 @@ import { requireRouteTripContext } from "@/lib/route-auth";
 import { expenseSchema } from "@/lib/validation";
 
 async function getOwnedExpense(expenseId: number) {
-  const context = await requireRouteTripContext();
+  const context = await requireRouteTripContext({ minimumRole: "collaborator" });
   if ("error" in context) {
     return context;
   }

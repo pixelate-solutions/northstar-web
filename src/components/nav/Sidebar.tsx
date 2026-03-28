@@ -3,11 +3,12 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useClerk, useUser } from "@clerk/nextjs";
-import { ChevronDown, Pencil, Plus } from "lucide-react";
+import { ChevronDown, Pencil, Plus, Users } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { TripSharingDialog } from "@/components/trips/TripSharingDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -46,16 +47,22 @@ import { cn, formatCurrency } from "@/lib/utils";
 
 interface SidebarProps {
   activeTripId: number;
+  activeTripRole: "owner" | "collaborator" | "viewer";
+  canEditActiveTrip: boolean;
+  canManageTripUsers: boolean;
   countdownLabel: string;
   daysHref: string;
   packingPercent: number;
   totalBooked: number;
   tripName: string;
-  trips: Array<{ id: number; name: string }>;
+  trips: Array<{ id: number; name: string; accessRole: "owner" | "collaborator" | "viewer" }>;
 }
 
 export function Sidebar({
   activeTripId,
+  activeTripRole,
+  canEditActiveTrip,
+  canManageTripUsers,
   countdownLabel,
   daysHref,
   packingPercent,
@@ -73,6 +80,7 @@ export function Sidebar({
   const [createTripName, setCreateTripName] = useState("");
   const [creatingTrip, setCreatingTrip] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [sharingDialogOpen, setSharingDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(tripName);
   const [renamingTrip, setRenamingTrip] = useState(false);
   const bookedLabel = formatBookedAmount(totalBooked, collapsed);
@@ -193,7 +201,7 @@ export function Sidebar({
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-foreground">{tripName}</p>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {countdownLabel}
+                      {countdownLabel} · {activeTripRole}
                     </p>
                   </div>
                   <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
@@ -218,14 +226,23 @@ export function Sidebar({
                     >
                       <div className="min-w-0">
                         <p className="truncate text-[0.95rem] font-medium sm:text-sm">{trip.name}</p>
-                        {trip.id === activeTripId ? (
-                          <p className="text-xs text-muted-foreground">Current trip</p>
-                        ) : null}
+                        <p className="text-xs text-muted-foreground">
+                          {trip.id === activeTripId ? "Current trip" : trip.accessRole}
+                        </p>
                       </div>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
+                {canManageTripUsers ? (
+                  <DropdownMenuItem
+                    onClick={() => setSharingDialogOpen(true)}
+                    className="cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground sm:rounded-[0.9rem] sm:px-2.5 sm:py-2.5"
+                  >
+                    <Users className="size-4" />
+                    <span>Manage Sharing</span>
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem
                   onClick={() => setCreateDialogOpen(true)}
                   className="cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground sm:rounded-[0.9rem] sm:px-2.5 sm:py-2.5"
@@ -236,14 +253,16 @@ export function Sidebar({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <button
-              type="button"
-              onClick={() => setRenameDialogOpen(true)}
-              className="inline-flex shrink-0 items-center justify-center rounded-[1.25rem] border border-white/40 bg-white/32 px-3 text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] backdrop-blur-xl transition hover:bg-white/42 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/30"
-              aria-label="Rename active trip"
-            >
-              <Pencil className="size-4" />
-            </button>
+            {canEditActiveTrip ? (
+              <button
+                type="button"
+                onClick={() => setRenameDialogOpen(true)}
+                className="inline-flex shrink-0 items-center justify-center rounded-[1.25rem] border border-white/40 bg-white/32 px-3 text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] backdrop-blur-xl transition hover:bg-white/42 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/30"
+                aria-label="Rename active trip"
+              >
+                <Pencil className="size-4" />
+              </button>
+            ) : null}
           </div>
         ) : null}
       </SidebarHeader>
@@ -424,6 +443,15 @@ export function Sidebar({
           </div>
         </DialogContent>
       </Dialog>
+
+      {canManageTripUsers ? (
+        <TripSharingDialog
+          open={sharingDialogOpen}
+          onOpenChange={setSharingDialogOpen}
+          tripId={activeTripId}
+          tripName={tripName}
+        />
+      ) : null}
     </SidebarShell>
   );
 }

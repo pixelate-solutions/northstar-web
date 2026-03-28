@@ -10,30 +10,30 @@ const PREVIEW_DAYS = [
 ];
 
 const FEATURES = [
-  { icon: "🗓️", label: "Day Planner",    body: "Every day laid out clearly with events, times, and notes in one calm view.",         bg: "#fff8ec", border: "#ffe8bc" },
-  { icon: "💰", label: "Budget Tracker", body: "Costs stay attached to each day. See what's spent and what's left at a glance.",     bg: "#edf7ff", border: "#c2deff" },
-  { icon: "📍", label: "Route Overview", body: "The full trip shape visible from day one — no jumping between tabs or maps.",        bg: "#edfbf3", border: "#b3efd4" },
-  { icon: "🔔", label: "Reminders",      body: "Set reminders that show up when they matter, tied right to the day they belong to.", bg: "#fef0ff", border: "#e8c2ff" },
+  { icon: "🤖", label: "AI Concierge", body: "Plan with natural language, research stops live, and let Northstar edit the active trip for you.", bg: "#fff8ec", border: "#ffe8bc" },
+  { icon: "💰", label: "Budget Builder", body: "Get budget recommendations, structure costs by trip need, and save approved spend directly into the plan.", bg: "#edf7ff", border: "#c2deff" },
+  { icon: "🎒", label: "Packing Help", body: "Create packing lists around destination, weather, activity type, and trip length instead of starting from scratch.", bg: "#edfbf3", border: "#b3efd4" },
+  { icon: "✈️", label: "Reservation Assist", body: "Look up flights, sync reservations, compare booking options, and move from research to action without leaving the workspace.", bg: "#fef0ff", border: "#e8c2ff" },
 ];
 
 const STEPS = [
-  { n: "01", title: "Shape the route", body: "Set your dates and days to give the plan a clear skeleton from the start.", color: "#fff8ec" },
-  { n: "02", title: "Add every detail", body: "Drop in bookings, costs, reminders once — right where they belong in the timeline.", color: "#edf7ff" },
-  { n: "03", title: "Travel, uncluttered", body: "One workspace instead of bouncing between docs, emails, and screenshots.", color: "#edfbf3" },
+  { n: "01", title: "Tell it what you want", body: "Describe the trip, vibe, budget, stops, or booking help you need in plain English.", color: "#fff8ec" },
+  { n: "02", title: "Let AI do the heavy lift", body: "Northstar researches live options, accounts for travel time and timezone shifts, and updates the active trip when the request is clear.", color: "#edf7ff" },
+  { n: "03", title: "Approve external actions", body: "Keep internal edits automatic, then approve bookings, provider handoffs, and account connections only when needed.", color: "#edfbf3" },
 ];
 
 const FAQS = [
   { q: "Is it really a one-time payment?", a: "Yes — pay once, plan every trip you'll ever take. No renewals, no monthly fees, no surprises." },
   { q: "Do I need an account to start?", a: "You can poke around immediately. An account lets you save trips across all your devices." },
   { q: "Can I share with travel partners?", a: "Trip sharing is on the roadmap. For now you can export a clean view to share with anyone." },
-  { q: "What about AI features?", a: "The core workspace is fully featured without AI. Optional AI add-ons can be layered in separately." },
+  { q: "What can the AI do right now?", a: "Northstar AI can plan days in natural language, research destinations and restaurants, update your trip, help with budgets and packing, look up flight details, sync Google reservations, and guide booking flows with approval for external actions." },
 ];
 
 const STATS = [
-  { val: "11",   sub: "days until departure",  icon: "📅", bg: "#fff8ec", border: "#ffe8bc" },
-  { val: "8",    sub: "events on this day",     icon: "⚡", bg: "#edf7ff", border: "#c2deff" },
-  { val: "0%",   sub: "packing complete",       icon: "🎒", bg: "#fef0ff", border: "#e8c2ff" },
-  { val: "$1.2k",sub: "paid so far",            icon: "💳", bg: "#edfbf3", border: "#b3efd4" },
+  { val: "11", sub: "days until departure", icon: "📅", bg: "#fff8ec", border: "#ffe8bc" },
+  { val: "3", sub: "AI actions applied", icon: "⚡", bg: "#edf7ff", border: "#c2deff" },
+  { val: "82%", sub: "packing plan ready", icon: "🎒", bg: "#fef0ff", border: "#e8c2ff" },
+  { val: "$1.2k", sub: "budget mapped", icon: "💳", bg: "#edfbf3", border: "#b3efd4" },
 ];
 
 export default function NorthstarLanding() {
@@ -220,23 +220,23 @@ export default function NorthstarLanding() {
 
           <div className="float-in d1">
             <div className="section-eyebrow" style={{ marginBottom: 24 }}>
-              <span>✦</span> Trip Planning, Simplified
+              <span>✦</span> AI Trip Planning, Live
             </div>
             <h1 className="hero-h1" style={{ fontSize: 52, fontWeight: 800, color: "#1e293b", lineHeight: 1.05, letterSpacing: "-0.03em", marginBottom: 20 }}>
-              Plan your trip.<br />
+              Plan your trip with AI.<br />
               <span style={{ background: "linear-gradient(110deg, #f5a623 10%, #e8554e 90%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                Skip the chaos.
+                Keep every detail aligned.
               </span>
             </h1>
             <p style={{ fontSize: 17, color: "#64748b", lineHeight: 1.72, maxWidth: 460, marginBottom: 32, fontWeight: 400 }}>
-              One clean workspace for your route, days, budget, and notes — so planning stays easy and the trip is actually fun to look forward to.
+              Research destinations, build day plans, shape the budget, prep packing, sync reservations, and guide booking decisions inside one clean travel workspace.
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 40 }}>
               <a href="/start" className="btn-dark">Start Planning →</a>
               <a href="#product" className="btn-soft">See the product</a>
             </div>
             <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-              {[["⏱️ Minutes","to get started"],["🗂️ One view","for the full trip"],["💸 $49","lifetime, no sub"]].map(([v,s]) => (
+              {[["🤖 AI-native","planning + edits"],["🗂️ One view","for the full trip"],["💸 $49","lifetime access"]].map(([v,s]) => (
                 <div key={v} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{v}</div>
                   <div style={{ fontSize: 13, color: "#94a3b8" }}>{s}</div>
@@ -313,9 +313,9 @@ export default function NorthstarLanding() {
       <section id="product" style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 20px 60px", position: "relative", zIndex: 1 }}>
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div className="section-eyebrow" style={{ marginBottom: 16 }}>🗺️ Product</div>
-          <h2 style={{ fontSize: 38, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.03em", lineHeight: 1.1 }}>Everything in one place.</h2>
+          <h2 style={{ fontSize: 38, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.03em", lineHeight: 1.1 }}>AI planning inside the trip workspace.</h2>
           <p style={{ fontSize: 16, color: "#64748b", marginTop: 12, maxWidth: 440, margin: "12px auto 0", lineHeight: 1.7 }}>
-            No jumping between tabs. No messy spreadsheets. Just a clean, calm workspace.
+            No copy-pasting between tabs. No separate planning doc. Just research, edits, budgets, packing, and reservation help in one calm place.
           </p>
         </div>
         <div className="four-col" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
@@ -377,14 +377,14 @@ export default function NorthstarLanding() {
           <div className="card" style={{ padding: "44px 40px" }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#64748b", marginBottom: 24 }}>Everything in the core workspace</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 28 }}>
-              {["Multiple private trips","Day-by-day planner","Budget & costs","Notes & bookings","Reminders","Export support"].map((item) => (
+              {["AI trip concierge","Day-by-day planner","Budget & packing help","Reservation sync","Notes & reminders","Booking assistance"].map((item) => (
                 <div key={item} style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", background: "#f8fafc", borderRadius: 12, fontSize: 13, fontWeight: 500, color: "#475569", border: "1px solid #f1f5f9" }}>
                   <span style={{ color: "#1fb87a", fontSize: 14 }}>✓</span> {item}
                 </div>
               ))}
             </div>
             <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.72 }}>
-              Built for real travelers. No clutter, no monthly fees — just a polished planning workspace that works every time you open it.
+              Built for real travelers. Internal trip edits stay automatic, while external booking actions stay approval-based so the workflow stays clean and safe.
             </p>
           </div>
         </div>
@@ -421,10 +421,10 @@ export default function NorthstarLanding() {
           <div style={{ maxWidth: 500, position: "relative" }}>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 700, marginBottom: 16 }}>Start Planning</div>
             <h2 style={{ fontSize: 38, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.1, marginBottom: 14 }}>
-              Build your next trip<br />in one clean workspace.
+              Build your next trip<br />with an AI concierge.
             </h2>
             <p style={{ fontSize: 16, color: "rgba(255,255,255,0.6)", lineHeight: 1.7 }}>
-              Shape the route, add the details, and travel without the clutter.
+              Ask in plain English, let Northstar do the research and edits, then approve the external steps when you are ready.
             </p>
           </div>
           <a href="/start"
@@ -444,7 +444,7 @@ export default function NorthstarLanding() {
           <span style={{ fontSize: 13, color: "#94a3b8" }}>— clean travel planning, finally.</span>
         </div>
         <nav style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-          {[["Product","#product"],["How It Works","#flow"],["Pricing","#pricing"],["FAQ","#faq"]].map(([l,h]) => (
+          {[["Product","#product"],["How It Works","#flow"],["Pricing","#pricing"],["FAQ","#faq"],["Privacy","/privacy"],["Terms","/terms"]].map(([l,h]) => (
             <a key={h} href={h} className="nav-link-footer">{l}</a>
           ))}
         </nav>

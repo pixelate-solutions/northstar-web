@@ -10,9 +10,11 @@ import { Textarea } from "@/components/ui/textarea";
 export function DayNotesEditor({
   date,
   initialNotes,
+  canEdit = true,
 }: {
   date: string;
   initialNotes: string | null;
+  canEdit?: boolean;
 }) {
   const router = useRouter();
   const [notes, setNotes] = useState(initialNotes ?? "");
@@ -47,10 +49,13 @@ export function DayNotesEditor({
         rows={6}
         aria-label="Day notes"
         placeholder="Add notes, reservations, or anything you want to remember for this day."
+        readOnly={!canEdit}
       />
-      <Button onClick={() => void saveNotes()} disabled={saving}>
-        {saving ? "Saving..." : "Save Notes"}
-      </Button>
+      {canEdit ? (
+        <Button onClick={() => void saveNotes()} disabled={saving}>
+          {saving ? "Saving..." : "Save Notes"}
+        </Button>
+      ) : null}
     </div>
   );
 }

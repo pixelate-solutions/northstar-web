@@ -6,7 +6,7 @@ import { requireRouteTripContext } from "@/lib/route-auth";
 import { reorderSchema } from "@/lib/validation";
 
 export async function PATCH(request: Request) {
-  const context = await requireRouteTripContext();
+  const context = await requireRouteTripContext({ minimumRole: "collaborator" });
   if ("error" in context) {
     return context.error;
   }

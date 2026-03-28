@@ -51,7 +51,13 @@ function getExpenseForm(expense: Expense | null) {
     : emptyExpenseForm;
 }
 
-export function BudgetManager({ initialExpenses }: { initialExpenses: Expense[] }) {
+export function BudgetManager({
+  initialExpenses,
+  canEdit = true,
+}: {
+  initialExpenses: Expense[];
+  canEdit?: boolean;
+}) {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -124,15 +130,17 @@ export function BudgetManager({ initialExpenses }: { initialExpenses: Expense[] 
                 Track booked, paid, and remaining trip spend.
               </p>
             </div>
-            <Button
-              onClick={() => {
-                setEditingExpense(null);
-                setModalOpen(true);
-              }}
-            >
-              <Plus className="size-4" />
-              Add Expense
-            </Button>
+            {canEdit ? (
+              <Button
+                onClick={() => {
+                  setEditingExpense(null);
+                  setModalOpen(true);
+                }}
+              >
+                <Plus className="size-4" />
+                Add Expense
+              </Button>
+            ) : null}
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-3">
@@ -171,6 +179,7 @@ export function BudgetManager({ initialExpenses }: { initialExpenses: Expense[] 
           <BudgetSummary expenses={initialExpenses} />
           <ExpenseTable
             expenses={initialExpenses}
+            editable={canEdit}
             onEdit={(expense) => {
               setEditingExpense(expense);
               setModalOpen(true);
@@ -182,22 +191,28 @@ export function BudgetManager({ initialExpenses }: { initialExpenses: Expense[] 
       ) : (
         <EmptyState
           title="No expenses yet"
-          description="Add expenses to start tracking booked and paid trip costs."
-          actionLabel="Add Expense"
-          onAction={() => setModalOpen(true)}
+          description={
+            canEdit
+              ? "Add expenses to start tracking booked and paid trip costs."
+              : "No expenses have been added to this trip yet."
+          }
+          actionLabel={canEdit ? "Add Expense" : undefined}
+          onAction={canEdit ? () => setModalOpen(true) : undefined}
         />
       )}
 
-      <ExpenseDialog
-        key={`${editingExpense?.id ?? "new"}-${modalOpen ? "open" : "closed"}`}
-        open={modalOpen}
-        onOpenChange={(open) => {
-          setModalOpen(open);
-          if (!open) setEditingExpense(null);
-        }}
-        expense={editingExpense}
-        onSubmit={(payload) => void saveExpense(payload)}
-      />
+      {canEdit ? (
+        <ExpenseDialog
+          key={`${editingExpense?.id ?? "new"}-${modalOpen ? "open" : "closed"}`}
+          open={modalOpen}
+          onOpenChange={(open) => {
+            setModalOpen(open);
+            if (!open) setEditingExpense(null);
+          }}
+          expense={editingExpense}
+          onSubmit={(payload) => void saveExpense(payload)}
+        />
+      ) : null}
     </div>
   );
 }

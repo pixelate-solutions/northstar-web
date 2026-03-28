@@ -14,6 +14,7 @@ interface DatePickerProps {
   placeholder?: string;
   id?: string;
   className?: string;
+  disabled?: boolean;
 }
 
 export function DatePicker({
@@ -22,6 +23,7 @@ export function DatePicker({
   placeholder = "Pick a date",
   id,
   className,
+  disabled = false,
 }: DatePickerProps) {
   const date = React.useMemo(() => (value ? parseISODate(value) : undefined), [value]);
   const [open, setOpen] = React.useState(false);
@@ -31,12 +33,20 @@ export function DatePicker({
   const toYear = Math.max(selectedYear + 5, currentYear + 5);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!disabled) {
+          setOpen(nextOpen);
+        }
+      }}
+    >
       <PopoverTrigger
         id={id}
         render={
           <Button
             variant="outline"
+            disabled={disabled}
             className={cn(
               "w-full justify-start rounded-lg text-left font-normal shadow-none",
               !date && "text-muted-foreground",

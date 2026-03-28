@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { MobileHeader } from "@/components/nav/MobileHeader";
+import { AiConciergeSheet } from "@/components/ai/AiConciergeSheet";
 import { Sidebar } from "@/components/nav/Sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { getAuthenticatedClerkUserId, getCurrentAppUser, isClerkConfigured } from "@/lib/auth";
@@ -79,6 +80,9 @@ export default async function AppLayout({
       )
     : 0;
   const daysHref = bundle.days[0] ? `/app/days/${bundle.days[0].date}` : "/app/days";
+  const activeTripRole = activeTrip.accessRole;
+  const canEditActiveTrip = activeTripRole !== "viewer";
+  const canManageTripUsers = activeTripRole === "owner";
 
   return (
     <SidebarProvider>
@@ -86,15 +90,29 @@ export default async function AppLayout({
         <div className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[44rem] bg-[radial-gradient(circle_at_top_left,rgba(33,91,137,0.18),transparent_26%),radial-gradient(circle_at_22%_8%,rgba(53,173,168,0.18),transparent_22%),radial-gradient(circle_at_top_right,rgba(191,224,227,0.24),transparent_28%),linear-gradient(180deg,rgba(248,252,253,0.92)_0%,rgba(244,249,250,0.90)_52%,rgba(251,253,253,0.92)_100%)] [mask-image:linear-gradient(to_bottom,black_0%,black_74%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_74%,transparent_100%)]" />
         <MobileHeader
           activeTripId={activeTrip.id}
+          activeTripRole={activeTripRole}
+          canEditActiveTrip={canEditActiveTrip}
+          canManageTripUsers={canManageTripUsers}
           countdownLabel={countdownLabel}
           daysHref={daysHref}
           tripName={activeTrip.name}
-          trips={allTrips.map((trip) => ({ id: trip.id, name: trip.name }))}
+          trips={allTrips.map((trip) => ({
+            id: trip.id,
+            name: trip.name,
+            accessRole: trip.accessRole,
+          }))}
         />
         <div className="mx-auto flex min-h-screen max-w-[1600px] lg:my-5 lg:min-h-[calc(100vh-2.5rem)] lg:max-w-[calc(100%-2.5rem)]">
           <Sidebar
             activeTripId={activeTrip.id}
-            trips={allTrips.map((trip) => ({ id: trip.id, name: trip.name }))}
+            activeTripRole={activeTripRole}
+            canEditActiveTrip={canEditActiveTrip}
+            canManageTripUsers={canManageTripUsers}
+            trips={allTrips.map((trip) => ({
+              id: trip.id,
+              name: trip.name,
+              accessRole: trip.accessRole,
+            }))}
             tripName={activeTrip.name}
             daysHref={daysHref}
             packingPercent={packingPercent}
@@ -107,6 +125,7 @@ export default async function AppLayout({
             </main>
           </div>
         </div>
+        <AiConciergeSheet tripName={activeTrip.name} enabled={canEditActiveTrip} />
       </div>
     </SidebarProvider>
   );

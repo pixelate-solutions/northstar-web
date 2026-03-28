@@ -70,6 +70,10 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
   }
 
   async function handleCoverUpload(id: number, file: File | null) {
+    if (!canEdit) {
+      return;
+    }
+
     if (!file) {
       return;
     }
@@ -253,6 +257,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
               id="trip-start-date"
               value={startDate}
               onChange={setStartDate}
+              disabled={!canEdit}
             />
           </div>
           <div className="space-y-2">
@@ -264,6 +269,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
               max={60}
               value={totalDays}
               onChange={(event) => setTotalDays(event.target.value)}
+              disabled={!canEdit}
             />
           </div>
           <Button onClick={() => void saveTripSettings()} disabled={!canEdit || savingTrip}>
@@ -310,6 +316,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                     id={`date-${day.id}`}
                     value={day.date}
                     onChange={(value) => updateDay(day.id, "date", value)}
+                    disabled={!canEdit}
                   />
                 </div>
                 <div className="space-y-2 xl:col-span-2">
@@ -319,6 +326,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                     value={day.title}
                     onChange={(event) => updateDay(day.id, "title", event.target.value)}
                     placeholder="Sedona Day"
+                    disabled={!canEdit}
                   />
                 </div>
                 <div className="space-y-2">
@@ -328,6 +336,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                     value={day.location}
                     onChange={(event) => updateDay(day.id, "location", event.target.value)}
                     placeholder="Sedona, AZ"
+                    disabled={!canEdit}
                   />
                 </div>
                 <div className="space-y-2">
@@ -339,6 +348,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                       updateDay(day.id, "sleepLocation", event.target.value)
                     }
                     placeholder="Springdale, UT"
+                    disabled={!canEdit}
                   />
                 </div>
                 <div className="space-y-2">
@@ -348,6 +358,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                     value={day.driveInfo}
                     onChange={(event) => updateDay(day.id, "driveInfo", event.target.value)}
                     placeholder="2 hr 15 min via AZ-179"
+                    disabled={!canEdit}
                   />
                 </div>
               </div>
@@ -359,6 +370,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                   value={day.coverImageUrl}
                   onChange={(event) => updateDay(day.id, "coverImageUrl", event.target.value)}
                   placeholder="https://images.unsplash.com/..."
+                  disabled={!canEdit}
                 />
               </div>
 
@@ -373,6 +385,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                       void handleCoverUpload(day.id, event.target.files?.[0] ?? null)
                     }
                     className="h-auto py-2"
+                    disabled={!canEdit}
                   />
                   <p className="text-xs text-muted-foreground">
                     Upload an image or paste a URL above.
@@ -395,6 +408,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                           onClick={() => updateDay(day.id, "coverImageUrl", "")}
                           className="absolute right-2 top-2 inline-flex size-8 items-center justify-center rounded-full border border-white/60 bg-white/80 text-foreground shadow-sm backdrop-blur hover:cursor-pointer"
                           aria-label={`Remove cover image for ${day.title}`}
+                          disabled={!canEdit}
                         >
                           <X className="size-4" />
                         </button>
@@ -420,6 +434,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                   value={day.notes}
                   onChange={(event) => updateDay(day.id, "notes", event.target.value)}
                   placeholder="Reservations, parking notes, backup plan, or anything else for this day."
+                  disabled={!canEdit}
                 />
               </div>
 

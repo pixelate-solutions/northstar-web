@@ -12,7 +12,7 @@ function revalidatePacking() {
 }
 
 async function getOwnedPackingItem(itemId: number) {
-  const context = await requireRouteTripContext();
+  const context = await requireRouteTripContext({ minimumRole: "collaborator" });
   if ("error" in context) {
     return context;
   }

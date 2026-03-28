@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, Menu, Pencil, Plus } from "lucide-react";
+import { ChevronDown, Menu, Pencil, Plus, Users } from "lucide-react";
 import { toast } from "sonner";
 
+import { TripSharingDialog } from "@/components/trips/TripSharingDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,14 +31,20 @@ import { cn } from "@/lib/utils";
 
 interface MobileHeaderProps {
   activeTripId: number;
+  activeTripRole: "owner" | "collaborator" | "viewer";
+  canEditActiveTrip: boolean;
+  canManageTripUsers: boolean;
   countdownLabel: string;
   daysHref: string;
   tripName: string;
-  trips: Array<{ id: number; name: string }>;
+  trips: Array<{ id: number; name: string; accessRole: "owner" | "collaborator" | "viewer" }>;
 }
 
 export function MobileHeader({
   activeTripId,
+  activeTripRole,
+  canEditActiveTrip,
+  canManageTripUsers,
   countdownLabel,
   daysHref,
   tripName,
@@ -51,6 +58,7 @@ export function MobileHeader({
   const [createTripName, setCreateTripName] = useState("");
   const [creatingTrip, setCreatingTrip] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [sharingDialogOpen, setSharingDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(tripName);
   const [renamingTrip, setRenamingTrip] = useState(false);
   const defaultTripName = `New Trip ${trips.length + 1}`;
@@ -212,7 +220,7 @@ export function MobileHeader({
               {product.name}
             </p>
             <h2 className="mt-1 text-xl font-bold tracking-tight">{tripName}</h2>
-            <p className="text-sm text-muted-foreground">{countdownLabel}</p>
+            <p className="text-sm text-muted-foreground">{countdownLabel} · {activeTripRole}</p>
 
             <div className="mt-4 flex items-stretch gap-2">
               <DropdownMenu>
@@ -251,13 +259,25 @@ export function MobileHeader({
                       >
                         <div className="min-w-0">
                           <p className="truncate text-[0.95rem] font-medium">{trip.name}</p>
-                          {trip.id === activeTripId ? (
-                            <p className="text-xs text-muted-foreground">Current trip</p>
-                          ) : null}
+                          <p className="text-xs text-muted-foreground">
+                            {trip.id === activeTripId ? "Current trip" : trip.accessRole}
+                          </p>
                         </div>
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuGroup>
+                  {canManageTripUsers ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setSharingDialogOpen(true)}
+                        className="cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground"
+                      >
+                        <Users className="size-4" />
+                        <span>Manage Sharing</span>
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => setCreateDialogOpen(true)}
@@ -269,14 +289,16 @@ export function MobileHeader({
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <button
-                type="button"
-                onClick={() => setRenameDialogOpen(true)}
-                className="inline-flex shrink-0 items-center justify-center rounded-[1.25rem] border border-white/45 bg-white/70 px-4 text-muted-foreground shadow-[0_12px_28px_rgba(18,43,74,0.08)] transition hover:bg-white/82 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/30"
-                aria-label="Rename active trip"
-              >
-                <Pencil className="size-4" />
-              </button>
+              {canEditActiveTrip ? (
+                <button
+                  type="button"
+                  onClick={() => setRenameDialogOpen(true)}
+                  className="inline-flex shrink-0 items-center justify-center rounded-[1.25rem] border border-white/45 bg-white/70 px-4 text-muted-foreground shadow-[0_12px_28px_rgba(18,43,74,0.08)] transition hover:bg-white/82 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/30"
+                  aria-label="Rename active trip"
+                >
+                  <Pencil className="size-4" />
+                </button>
+              ) : null}
             </div>
           </div>
           <nav className="flex flex-col gap-1 p-3">
@@ -386,6 +408,15 @@ export function MobileHeader({
           </div>
         </DialogContent>
       </Dialog>
+
+      {canManageTripUsers ? (
+        <TripSharingDialog
+          open={sharingDialogOpen}
+          onOpenChange={setSharingDialogOpen}
+          tripId={activeTripId}
+          tripName={tripName}
+        />
+      ) : null}
     </>
   );
 }

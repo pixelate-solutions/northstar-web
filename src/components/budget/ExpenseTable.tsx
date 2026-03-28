@@ -12,6 +12,7 @@ interface ExpenseTableProps {
   onEdit: (expense: Expense) => void;
   onDelete: (expense: Expense) => void;
   onMarkPaid: (expense: Expense) => void;
+  editable?: boolean;
 }
 
 export function ExpenseTable({
@@ -19,6 +20,7 @@ export function ExpenseTable({
   onEdit,
   onDelete,
   onMarkPaid,
+  editable = true,
 }: ExpenseTableProps) {
   return (
     <div className="overflow-hidden rounded-[2rem] border border-border/70 bg-card/80">
@@ -31,7 +33,7 @@ export function ExpenseTable({
               <th className="px-4 py-3 font-medium">Amount</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Date</th>
-              <th className="px-4 py-3 font-medium">Actions</th>
+              {editable ? <th className="px-4 py-3 font-medium">Actions</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -66,36 +68,38 @@ export function ExpenseTable({
                 <td className="px-4 py-4 text-muted-foreground">
                   {expense.purchaseDate ?? "N/A"}
                 </td>
-                <td className="px-4 py-4">
-                  <div className="flex items-center gap-1">
-                    {!Boolean(expense.isPaid) ? (
+                {editable ? (
+                  <td className="px-4 py-4">
+                    <div className="flex items-center gap-1">
+                      {!Boolean(expense.isPaid) ? (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => onMarkPaid(expense)}
+                          aria-label={`Mark ${expense.description} paid`}
+                        >
+                          <CheckCircle2 className="size-4" />
+                        </Button>
+                      ) : null}
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        onClick={() => onMarkPaid(expense)}
-                        aria-label={`Mark ${expense.description} paid`}
+                        onClick={() => onEdit(expense)}
+                        aria-label={`Edit ${expense.description}`}
                       >
-                        <CheckCircle2 className="size-4" />
+                        <Pencil className="size-4" />
                       </Button>
-                    ) : null}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => onEdit(expense)}
-                      aria-label={`Edit ${expense.description}`}
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => onDelete(expense)}
-                      aria-label={`Delete ${expense.description}`}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                </td>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => onDelete(expense)}
+                        aria-label={`Delete ${expense.description}`}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

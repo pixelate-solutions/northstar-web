@@ -1,9 +1,18 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { asc, eq, inArray } from "drizzle-orm";
 
 import { days, locations } from "@/db/schema";
 import { requireRouteTripContext } from "@/lib/route-auth";
+import { locationSchema } from "@/lib/validation";
+
+function revalidateLocationViews() {
+  revalidatePath("/app", "layout");
+  revalidatePath("/app/calendar");
+  revalidatePath("/app/days");
+  revalidatePath("/app/days/[date]", "page");
+}
 
 export async function GET(request: Request) {
   const context = await requireRouteTripContext();
@@ -46,4 +55,35 @@ export async function GET(request: Request) {
     : [];
 
   return NextResponse.json(data);
+}
+
+export async function POST(request: Request) {
+  const context = await requireRouteTripContext({ minimumRole: "collaborator" });
+  if ("error" in context) {
+    return context.error;
+  }
+
+  const payload = locationSchema.parse(await request.json());
+  const ownedDay = await context.db.query.days.findFirst({
+    where: (table, { and, eq }) =>
+      and(eq(table.id, payload.dayId), eq(table.tripId, context.activeTrip.id)),
+  });
+
+  if (!ownedDay) {
+    return NextResponse.json({ error: "Day not found for this trip." }, { status: 404 });
+  }
+
+  const [created] = await context.db
+    .insert(locations)
+    .values({
+      ...payload,
+      description: payload.description || null,
+      imageUrl: payload.imageUrl || null,
+      tip: payload.tip || null,
+      googleMapsUrl: payload.googleMapsUrl || null,
+    })
+    .returning();
+
+  revalidateLocationViews();
+  return NextResponse.json(created, { status: 201 });
 }

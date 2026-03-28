@@ -13,6 +13,7 @@ interface PackingCategoryProps {
   onEdit: (item: PackingItemType) => void;
   onDelete: (item: PackingItemType) => void;
   onPackAll: () => void;
+  editable?: boolean;
 }
 
 export function PackingCategory({
@@ -22,6 +23,7 @@ export function PackingCategory({
   onEdit,
   onDelete,
   onPackAll,
+  editable = true,
 }: PackingCategoryProps) {
   const packed = items.filter((item) => Boolean(item.isPacked)).length;
 
@@ -34,10 +36,12 @@ export function PackingCategory({
             {items.length} items in this category
           </p>
         </div>
-        <Button variant="outline" onClick={onPackAll}>
-          <PackageCheck className="size-4" />
-          Pack All
-        </Button>
+        {editable ? (
+          <Button variant="outline" onClick={onPackAll}>
+            <PackageCheck className="size-4" />
+            Pack All
+          </Button>
+        ) : null}
       </CardHeader>
       <CardContent className="space-y-4">
         <PackingProgress packed={packed} total={items.length} />
@@ -49,6 +53,7 @@ export function PackingCategory({
               onToggle={() => onToggle(item)}
               onEdit={() => onEdit(item)}
               onDelete={() => onDelete(item)}
+              editable={editable}
             />
           ))}
         </div>

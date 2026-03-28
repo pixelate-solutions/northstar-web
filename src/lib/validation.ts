@@ -64,3 +64,15 @@ export const reminderSchema = z.object({
     .union([z.string(), z.number(), z.null(), z.undefined()])
     .transform((value) => (value === "" || value === undefined ? null : Number(value))),
 });
+
+export const locationSchema = z.object({
+  dayId: z.coerce.number().int().positive(),
+  name: z.string().min(1),
+  lat: z.union([z.string(), z.number()]).transform((value) => String(value)),
+  lng: z.union([z.string(), z.number()]).transform((value) => String(value)),
+  type: z.string().min(1),
+  description: z.string().optional().or(z.literal("")),
+  imageUrl: z.string().optional().or(z.literal("")),
+  tip: z.string().optional().or(z.literal("")),
+  googleMapsUrl: z.string().optional().or(z.literal("")),
+});

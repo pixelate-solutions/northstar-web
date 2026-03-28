@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buildMetadata } from "@/lib/metadata";
-import { getCurrentAppUser } from "@/lib/auth";
+import { getCurrentTripContext } from "@/lib/auth";
 import { getDayByDate, getDaysOverview, getPackingItems } from "@/lib/server-data";
 import { ensureStarterTrip } from "@/lib/trips";
 import { formatCurrency, formatDate, formatTimeRange } from "@/lib/utils";
@@ -28,12 +28,12 @@ export async function generateMetadata({
 }: {
   params: Promise<{ date: string }>;
 }) {
-  const appUser = await getCurrentAppUser();
-  if (!appUser) {
+  const context = await getCurrentTripContext();
+  if (!context) {
     return buildMetadata("Day Detail");
   }
 
-  const trip = await ensureStarterTrip(appUser);
+  const trip = context.activeTrip ?? (await ensureStarterTrip(context.appUser));
   const { date } = await params;
   const day = trip ? await getDayByDate(trip.id, date) : null;
   return buildMetadata(day ? day.title : "Day Detail");
@@ -44,12 +44,12 @@ export default async function DayDetailPage({
 }: {
   params: Promise<{ date: string }>;
 }) {
-  const appUser = await getCurrentAppUser();
-  if (!appUser) {
+  const context = await getCurrentTripContext();
+  if (!context) {
     return null;
   }
 
-  const trip = await ensureStarterTrip(appUser);
+  const trip = context.activeTrip ?? (await ensureStarterTrip(context.appUser));
   if (!trip) {
     return null;
   }
@@ -86,6 +86,7 @@ export default async function DayDetailPage({
   const directionsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
     day.location
   )}`;
+  const canEdit = (context.activeTripRole ?? trip.accessRole) !== "viewer";
 
   return (
     <div className="space-y-6">
@@ -168,7 +169,14 @@ export default async function DayDetailPage({
             </div>
           </div>
 
-          <DaySchedule dayId={day.id} date={day.date} events={day.events} sortable title="Sortable Schedule" />
+          <DaySchedule
+            dayId={day.id}
+            date={day.date}
+            events={day.events}
+            sortable
+            editable={canEdit}
+            title="Sortable Schedule"
+          />
         </div>
 
         <div className="space-y-6">
@@ -227,7 +235,7 @@ export default async function DayDetailPage({
               <CardTitle>Notes</CardTitle>
             </CardHeader>
             <CardContent>
-              <DayNotesEditor date={day.date} initialNotes={day.notes} />
+              <DayNotesEditor date={day.date} initialNotes={day.notes} canEdit={canEdit} />
             </CardContent>
           </Card>
 

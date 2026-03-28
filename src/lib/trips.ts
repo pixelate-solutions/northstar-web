@@ -12,10 +12,12 @@ import {
   locations,
   packingItems,
   reminders,
+  tripMemberships,
   trips,
   type AppUser,
   type Trip,
 } from "@/db/schema";
+import type { TripAccessRole, TripListItem } from "@/lib/types";
 import { loadSouthwestTemplate } from "@/lib/southwest-template";
 
 interface CreateTripInput {
@@ -28,6 +30,21 @@ interface CreateTripInput {
 }
 
 type LegacySourceTrip = Awaited<ReturnType<typeof getLegacySourceTrip>>;
+
+function sortTripsByFreshness<T extends { updatedAt: Date; createdAt: Date }>(items: T[]) {
+  return [...items].sort((a, b) => {
+    const updatedDiff = b.updatedAt.getTime() - a.updatedAt.getTime();
+    if (updatedDiff !== 0) return updatedDiff;
+    return a.createdAt.getTime() - b.createdAt.getTime();
+  });
+}
+
+function toTripListItem(trip: Trip, accessRole: TripAccessRole): TripListItem {
+  return {
+    ...trip,
+    accessRole,
+  };
+}
 
 function buildSequentialDates(startDate: string, totalDays: number) {
   const start = new Date(`${startDate}T12:00:00`);
@@ -340,7 +357,7 @@ async function repairTripEventLocationsFromLegacy({
   return updates.length;
 }
 
-export async function listTripsForUser(userId: number) {
+async function listOwnedTripsForUser(userId: number) {
   const db = getDb();
   if (!db) {
     return [];
@@ -352,7 +369,50 @@ export async function listTripsForUser(userId: number) {
   });
 }
 
-export async function setActiveTrip(userId: number, tripId: number) {
+export async function listTripsForUser(userId: number): Promise<TripListItem[]> {
+  const db = getDb();
+  if (!db) {
+    return [];
+  }
+
+  const [ownedTrips, memberships] = await Promise.all([
+    listOwnedTripsForUser(userId),
+    db.query.tripMemberships.findMany({
+      where: eq(tripMemberships.userId, userId),
+      with: {
+        trip: true,
+      },
+      orderBy: [desc(tripMemberships.updatedAt), desc(tripMemberships.createdAt)],
+    }),
+  ]);
+
+  const tripMap = new Map<number, TripListItem>();
+
+  for (const trip of ownedTrips) {
+    tripMap.set(trip.id, toTripListItem(trip, "owner"));
+  }
+
+  for (const membership of memberships) {
+    if (membership.trip.ownerId === userId) {
+      continue;
+    }
+
+    tripMap.set(
+      membership.trip.id,
+      toTripListItem(
+        membership.trip,
+        membership.role === "collaborator" ? "collaborator" : "viewer"
+      )
+    );
+  }
+
+  return sortTripsByFreshness([...tripMap.values()]);
+}
+
+export async function getTripRoleForUser(
+  userId: number,
+  tripId: number
+): Promise<TripAccessRole | null> {
   const db = getDb();
   if (!db) {
     return null;
@@ -360,9 +420,32 @@ export async function setActiveTrip(userId: number, tripId: number) {
 
   const ownedTrip = await db.query.trips.findFirst({
     where: and(eq(trips.id, tripId), eq(trips.ownerId, userId)),
+    columns: { id: true },
+  });
+  if (ownedTrip) {
+    return "owner";
+  }
+
+  const membership = await db.query.tripMemberships.findFirst({
+    where: and(eq(tripMemberships.tripId, tripId), eq(tripMemberships.userId, userId)),
+    columns: { role: true },
   });
 
-  if (!ownedTrip) {
+  if (!membership) {
+    return null;
+  }
+
+  return membership.role === "collaborator" ? "collaborator" : "viewer";
+}
+
+export async function setActiveTrip(userId: number, tripId: number) {
+  const db = getDb();
+  if (!db) {
+    return null;
+  }
+
+  const tripRole = await getTripRoleForUser(userId, tripId);
+  if (!tripRole) {
     return null;
   }
 
@@ -589,7 +672,7 @@ export async function createTrip({
   return createdTrip;
 }
 
-export async function ensureStarterTrip(user: AppUser) {
+export async function ensureStarterTrip(user: AppUser): Promise<TripListItem | null> {
   const existingTrips = await listTripsForUser(user.id);
   if (existingTrips.length) {
     const activeTrip =
@@ -611,11 +694,12 @@ export async function ensureStarterTrip(user: AppUser) {
     return activeTrip;
   }
 
-  return createTrip({
+  const createdTrip = await createTrip({
     user,
     name: "Southwest Road Trip",
     importTemplate: true,
   });
+  return createdTrip ? toTripListItem(createdTrip, "owner") : null;
 }
 
 export async function markOnboardingComplete(userId: number) {
@@ -712,7 +796,7 @@ export async function deleteTripsOwnedByUser(userId: number) {
     return;
   }
 
-  const userTrips = await listTripsForUser(userId);
+  const userTrips = await listOwnedTripsForUser(userId);
   if (!userTrips.length) {
     return;
   }

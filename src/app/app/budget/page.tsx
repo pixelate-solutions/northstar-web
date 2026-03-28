@@ -1,7 +1,7 @@
 import { BudgetManager } from "@/components/budget/BudgetManager";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { buildMetadata } from "@/lib/metadata";
-import { getCurrentAppUser } from "@/lib/auth";
+import { getCurrentTripContext } from "@/lib/auth";
 import { getExpenses } from "@/lib/server-data";
 import { ensureStarterTrip } from "@/lib/trips";
 
@@ -9,17 +9,18 @@ export const metadata = buildMetadata("Budget");
 export const dynamic = "force-dynamic";
 
 export default async function BudgetPage() {
-  const appUser = await getCurrentAppUser();
-  if (!appUser) {
+  const context = await getCurrentTripContext();
+  if (!context) {
     return null;
   }
 
-  const trip = await ensureStarterTrip(appUser);
+  const trip = context.activeTrip ?? (await ensureStarterTrip(context.appUser));
   if (!trip) {
     return null;
   }
 
   const expenses = await getExpenses(trip.id);
+  const canEdit = (context.activeTripRole ?? trip.accessRole) !== "viewer";
 
   return (
     <div className="space-y-6">
@@ -28,7 +29,7 @@ export default async function BudgetPage() {
         title="Budget Tracker"
         description="Monitor booked vs. paid trip costs and keep an eye on category totals."
       />
-      <BudgetManager initialExpenses={expenses} />
+      <BudgetManager initialExpenses={expenses} canEdit={canEdit} />
     </div>
   );
 }

@@ -16,9 +16,11 @@ import type { DaySummary } from "@/lib/types";
 export function RemindersManager({
   initialReminders,
   days,
+  canEdit = true,
 }: {
   initialReminders: Reminder[];
   days: DaySummary[];
+  canEdit?: boolean;
 }) {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
@@ -96,29 +98,31 @@ export function RemindersManager({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 rounded-[2rem] border border-border/70 bg-card/80 p-4 sm:flex-row">
-        <input
-          value={quickAddTitle}
-          onChange={(event) => setQuickAddTitle(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              void quickAdd();
-            }
-          }}
-          placeholder="Quick add a reminder and press Enter"
-          className="h-12 flex-1 rounded-2xl border border-input bg-input/30 px-4 text-sm outline-none py-2"
-        />
-        <Button
-          onClick={() => {
-            setEditingReminder(null);
-            setModalOpen(true);
-          }}
-        >
-          <Plus className="size-4" />
-          Add Reminder
-        </Button>
-      </div>
+      {canEdit ? (
+        <div className="flex flex-col gap-3 rounded-[2rem] border border-border/70 bg-card/80 p-4 sm:flex-row">
+          <input
+            value={quickAddTitle}
+            onChange={(event) => setQuickAddTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void quickAdd();
+              }
+            }}
+            placeholder="Quick add a reminder and press Enter"
+            className="h-12 flex-1 rounded-2xl border border-input bg-input/30 px-4 py-2 text-sm outline-none"
+          />
+          <Button
+            onClick={() => {
+              setEditingReminder(null);
+              setModalOpen(true);
+            }}
+          >
+            <Plus className="size-4" />
+            Add Reminder
+          </Button>
+        </div>
+      ) : null}
 
       {(
         [
@@ -138,6 +142,7 @@ export function RemindersManager({
                 <ReminderCard
                   key={reminder.id}
                   reminder={reminder}
+                  editable={canEdit}
                   onToggle={() => void toggleReminder(reminder)}
                   onEdit={() => {
                     setEditingReminder(reminder);
@@ -156,17 +161,19 @@ export function RemindersManager({
         </Card>
       ))}
 
-      <ReminderForm
-        key={`${editingReminder?.id ?? "new"}-${modalOpen ? "open" : "closed"}`}
-        open={modalOpen}
-        onOpenChange={(open) => {
-          setModalOpen(open);
-          if (!open) setEditingReminder(null);
-        }}
-        reminder={editingReminder}
-        days={days}
-        onSubmit={(payload) => void saveReminder(payload)}
-      />
+      {canEdit ? (
+        <ReminderForm
+          key={`${editingReminder?.id ?? "new"}-${modalOpen ? "open" : "closed"}`}
+          open={modalOpen}
+          onOpenChange={(open) => {
+            setModalOpen(open);
+            if (!open) setEditingReminder(null);
+          }}
+          reminder={editingReminder}
+          days={days}
+          onSubmit={(payload) => void saveReminder(payload)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -9,6 +9,12 @@ import type {
   Trip,
 } from "@/db/schema";
 
+export type TripAccessRole = "owner" | "collaborator" | "viewer";
+
+export interface TripListItem extends Trip {
+  accessRole: TripAccessRole;
+}
+
 export interface DayWithDetails extends Day {
   events: Event[];
   locations: Location[];
@@ -39,7 +45,8 @@ export interface AppDataBundle {
 
 export interface AppShellData {
   appUser: AppUser;
-  trips: Trip[];
-  activeTrip: Trip;
+  trips: TripListItem[];
+  activeTrip: TripListItem;
+  activeTripRole: TripAccessRole;
   bundle: AppDataBundle;
 }
