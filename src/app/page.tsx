@@ -1,313 +1,454 @@
-import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
-import { ArrowRight, CalendarDays, CheckCircle2, LayoutDashboard, Map, Wallet } from "lucide-react";
+"use client";
 
-import { Button } from "@/components/ui/button";
-import { getCurrentAppUser } from "@/lib/auth";
-import { buildMetadata } from "@/lib/metadata";
-import {
-  landingFaqs,
-  landingFeatureHighlights,
-  landingWorkflow,
-  product,
-} from "@/lib/product";
+import { useState, useEffect } from "react";
 
-export const metadata = buildMetadata();
+const PREVIEW_DAYS = [
+  { label: "Day 1", date: "Apr. 8",  title: "Drive to Phoenix", meta: "12:00 PM · 4 hrs", color: "#fff4de", dot: "#f5a623" },
+  { label: "Day 2", date: "Apr. 9",  title: "Explore Sedona",   meta: "Red Rock trail + dinner", color: "#e8f5ff", dot: "#4f88df" },
+  { label: "Day 3", date: "Apr. 10", title: "Grand Canyon Rim", meta: "South Rim sunrise hike",  color: "#e9fff2", dot: "#1fb87a" },
+  { label: "Day 4", date: "Apr. 11", title: "Page & Horseshoe", meta: "Antelope Canyon tour",    color: "#fff0fb", dot: "#d46fbc" },
+];
 
-export default async function LandingPage() {
-  const appUser = await getCurrentAppUser();
-  const clerkReady = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
-  const primaryHref = appUser ? (appUser.hasLifetimeAccess ? "/app" : "/unlock") : "/sign-up";
-  const primaryLabel = appUser
-    ? appUser.hasLifetimeAccess
-      ? "Open Northstar"
-      : "Unlock Access"
-    : "Start Planning";
+const FEATURES = [
+  { icon: "🗓️", label: "Day Planner",    body: "Every day laid out clearly with events, times, and notes in one calm view.",         bg: "#fff8ec", border: "#ffe8bc" },
+  { icon: "💰", label: "Budget Tracker", body: "Costs stay attached to each day. See what's spent and what's left at a glance.",     bg: "#edf7ff", border: "#c2deff" },
+  { icon: "📍", label: "Route Overview", body: "The full trip shape visible from day one — no jumping between tabs or maps.",        bg: "#edfbf3", border: "#b3efd4" },
+  { icon: "🔔", label: "Reminders",      body: "Set reminders that show up when they matter, tied right to the day they belong to.", bg: "#fef0ff", border: "#e8c2ff" },
+];
+
+const STEPS = [
+  { n: "01", title: "Shape the route", body: "Set your dates and days to give the plan a clear skeleton from the start.", color: "#fff8ec" },
+  { n: "02", title: "Add every detail", body: "Drop in bookings, costs, reminders once — right where they belong in the timeline.", color: "#edf7ff" },
+  { n: "03", title: "Travel, uncluttered", body: "One workspace instead of bouncing between docs, emails, and screenshots.", color: "#edfbf3" },
+];
+
+const FAQS = [
+  { q: "Is it really a one-time payment?", a: "Yes — pay once, plan every trip you'll ever take. No renewals, no monthly fees, no surprises." },
+  { q: "Do I need an account to start?", a: "You can poke around immediately. An account lets you save trips across all your devices." },
+  { q: "Can I share with travel partners?", a: "Trip sharing is on the roadmap. For now you can export a clean view to share with anyone." },
+  { q: "What about AI features?", a: "The core workspace is fully featured without AI. Optional AI add-ons can be layered in separately." },
+];
+
+const STATS = [
+  { val: "11",   sub: "days until departure",  icon: "📅", bg: "#fff8ec", border: "#ffe8bc" },
+  { val: "8",    sub: "events on this day",     icon: "⚡", bg: "#edf7ff", border: "#c2deff" },
+  { val: "0%",   sub: "packing complete",       icon: "🎒", bg: "#fef0ff", border: "#e8c2ff" },
+  { val: "$1.2k",sub: "paid so far",            icon: "💳", bg: "#edfbf3", border: "#b3efd4" },
+];
+
+export default function NorthstarLanding() {
+  const [activeDay, setActiveDay] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const t = setInterval(() => setActiveDay(d => (d + 1) % PREVIEW_DAYS.length), 2600);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const fn = () => setScrolled(window.scrollY > 20);
+    window.addEventListener("scroll", fn);
+    return () => window.removeEventListener("scroll", fn);
+  }, []);
 
   return (
-    <div className="relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[42rem] bg-[radial-gradient(circle_at_14%_12%,rgba(25,84,129,0.18),transparent_26%),radial-gradient(circle_at_82%_10%,rgba(30,155,149,0.18),transparent_24%),radial-gradient(circle_at_72%_48%,rgba(193,231,227,0.30),transparent_28%),linear-gradient(180deg,#f8fbfc_0%,#f5faf9_42%,#fbfdfd_100%)]" />
-      <div className="mx-auto max-w-7xl px-6 pb-20 pt-6 sm:px-8 lg:px-10">
-        <header className="flex items-center justify-between rounded-full border border-white/60 bg-white/70 px-4 py-3 shadow-[0_24px_60px_rgba(17,46,72,0.08)] backdrop-blur-xl">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.34em] text-primary/80">{product.name}</p>
-            <p className="text-sm text-muted-foreground">Travel planning, structured.</p>
+    <div style={{ fontFamily: "'Plus Jakarta Sans', 'Nunito', sans-serif", background: "#f0f3f9", minHeight: "100vh", overflowX: "hidden" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+
+        .blob {
+          position: fixed; border-radius: 50%; filter: blur(80px);
+          pointer-events: none; z-index: 0; opacity: 0.55;
+        }
+
+        .pill-nav a, .pill-nav button {
+          font-size: 14px; font-weight: 500;
+          color: #64748b; text-decoration: none;
+          padding: 8px 18px; border-radius: 100px;
+          border: none; background: transparent;
+          font-family: inherit; cursor: pointer;
+          transition: all 0.18s ease;
+        }
+        .pill-nav a:hover, .pill-nav button:hover {
+          color: #1e293b; background: rgba(0,0,0,0.05);
+        }
+
+        .btn-dark {
+          display: inline-flex; align-items: center; gap: 6px;
+          background: #1e293b; color: #fff;
+          border: none; border-radius: 100px;
+          padding: 13px 26px; font-size: 15px; font-weight: 600;
+          font-family: inherit; cursor: pointer; text-decoration: none;
+          box-shadow: 0 8px 24px rgba(30,41,59,0.22);
+          transition: all 0.18s ease;
+        }
+        .btn-dark:hover { background: #334155; transform: translateY(-2px); box-shadow: 0 12px 32px rgba(30,41,59,0.28); }
+
+        .btn-soft {
+          display: inline-flex; align-items: center; gap: 6px;
+          background: #fff; color: #1e293b;
+          border: 1.5px solid #e2e8f0; border-radius: 100px;
+          padding: 12px 24px; font-size: 15px; font-weight: 600;
+          font-family: inherit; cursor: pointer; text-decoration: none;
+          transition: all 0.18s ease;
+        }
+        .btn-soft:hover { border-color: #cbd5e1; box-shadow: 0 4px 16px rgba(0,0,0,0.07); transform: translateY(-1px); }
+
+        .card {
+          background: #fff;
+          border-radius: 24px;
+          border: 1.5px solid rgba(255,255,255,0.9);
+          box-shadow: 0 2px 16px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.03);
+          transition: box-shadow 0.2s, transform 0.2s;
+        }
+        .card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.1); transform: translateY(-2px); }
+
+        .day-pill {
+          display: inline-flex; flex-direction: column;
+          align-items: center; padding: 10px 16px;
+          border-radius: 100px; border: 1.5px solid #e2e8f0;
+          background: #fff; cursor: pointer;
+          transition: all 0.18s ease; white-space: nowrap;
+          font-family: inherit;
+        }
+        .day-pill.active {
+          background: #1e293b; border-color: #1e293b; color: #fff;
+          box-shadow: 0 4px 16px rgba(30,41,59,0.22);
+        }
+        .day-pill:not(.active):hover { border-color: #94a3b8; }
+
+        .section-eyebrow {
+          display: inline-flex; align-items: center; gap: 8px;
+          background: #fff; border: 1.5px solid #e2e8f0;
+          border-radius: 100px; padding: 6px 16px;
+          font-size: 11px; font-weight: 700;
+          letter-spacing: 0.12em; text-transform: uppercase; color: #64748b;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+
+        .stat-card {
+          border-radius: 20px;
+          border-width: 1.5px; border-style: solid;
+          padding: 16px 14px;
+          transition: transform 0.18s, box-shadow 0.18s;
+        }
+        .stat-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,0.09); }
+
+        .feature-card {
+          border-radius: 22px;
+          padding: 28px;
+          transition: transform 0.18s, box-shadow 0.18s;
+          border-width: 1.5px; border-style: solid;
+        }
+        .feature-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,0.1); }
+
+        .step-card {
+          border-radius: 24px; padding: 32px 28px;
+          background: #fff; border: 1.5px solid #f1f5f9;
+          box-shadow: 0 2px 16px rgba(0,0,0,0.05);
+        }
+
+        .badge {
+          display: inline-flex; align-items: center; gap: 5px;
+          padding: 4px 12px; border-radius: 100px;
+          font-size: 12px; font-weight: 600;
+        }
+
+        .faq-card {
+          background: #fff; border-radius: 20px;
+          border: 1.5px solid #f1f5f9; padding: 26px 28px;
+          box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+          transition: box-shadow 0.18s, transform 0.18s;
+        }
+        .faq-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,0.08); transform: translateY(-2px); }
+
+        .nav-link-footer { font-size: 13px; color: #94a3b8; text-decoration: none; font-weight: 500; transition: color 0.15s; }
+        .nav-link-footer:hover { color: #1e293b; }
+
+        @keyframes floatIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+        .float-in { animation: floatIn 0.6s cubic-bezier(0.22,1,0.36,1) both; }
+        .d1 { animation-delay: 0.05s; }
+        .d2 { animation-delay: 0.12s; }
+
+        @media (max-width: 820px) {
+          .two-col { grid-template-columns: 1fr !important; }
+          .three-col { grid-template-columns: 1fr !important; }
+          .four-col { grid-template-columns: 1fr 1fr !important; }
+          .hide-sm { display: none !important; }
+          .hero-h1 { font-size: 38px !important; }
+        }
+      `}</style>
+
+      {/* Background blobs */}
+      <div className="blob" style={{ width: 500, height: 500, background: "#ffd9b0", top: -100, left: -100 }} />
+      <div className="blob" style={{ width: 400, height: 400, background: "#b8d8ff", top: 60, right: -80 }} />
+      <div className="blob" style={{ width: 300, height: 300, background: "#c8f5e0", bottom: "40%", left: "20%" }} />
+
+      {/* NAV */}
+      <header style={{ position: "sticky", top: 12, zIndex: 100, margin: "12px 16px 0" }}>
+        <div style={{
+          maxWidth: 1100, margin: "0 auto",
+          background: scrolled ? "rgba(255,255,255,0.88)" : "rgba(255,255,255,0.72)",
+          backdropFilter: "blur(20px)",
+          borderRadius: 100,
+          border: "1.5px solid rgba(255,255,255,0.9)",
+          boxShadow: scrolled ? "0 8px 32px rgba(0,0,0,0.1)" : "0 4px 20px rgba(0,0,0,0.06)",
+          padding: "10px 14px 10px 20px",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          transition: "all 0.3s ease",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #f5a623, #e8554e)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✦</div>
+            <span style={{ fontSize: 15, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.02em" }}>Northstar</span>
           </div>
-          <div className="flex items-center gap-2">
-            {appUser && clerkReady ? (
-              <div className="flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-2 py-1 shadow-[0_12px_28px_rgba(17,46,72,0.06)]">
-                <Link href={primaryHref}>
-                  <Button variant="ghost" className="rounded-full">
-                    {appUser.hasLifetimeAccess ? "Workspace" : "Unlock"}
-                  </Button>
-                </Link>
-                <UserButton />
-              </div>
-            ) : null}
+          <nav className="pill-nav hide-sm" style={{ display: "flex", gap: 2 }}>
+            {[["Product","#product"],["How It Works","#flow"],["Pricing","#pricing"],["FAQ","#faq"]].map(([l,h]) => (
+              <a key={h} href={h}>{l}</a>
+            ))}
+          </nav>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <a href="/start" className="btn-dark" style={{ padding: "9px 20px", fontSize: 14 }}>Get Started →</a>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <section className="grid gap-12 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:pt-24">
-          <div className="space-y-8">
-            <div className="space-y-5">
-              <p className="inline-flex rounded-full border border-primary/10 bg-primary/5 px-3 py-1 text-[11px] uppercase tracking-[0.34em] text-primary/80">
-                Modern Trip Operating System
-              </p>
-              <h1 className="max-w-3xl text-5xl font-semibold tracking-tight text-slate-950 sm:text-6xl">
-                Plan trips without the chaos.
-              </h1>
-              <p className="max-w-2xl text-lg leading-8 text-slate-600">
-                Turn flights, hotels, ideas, notes, reminders, and route stops into one
-                structured itinerary that stays clear from first draft to departure day.
-              </p>
+      {/* HERO */}
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "72px 20px 60px", position: "relative", zIndex: 1 }}>
+        <div className="two-col" style={{ display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: 52, alignItems: "center" }}>
+
+          <div className="float-in d1">
+            <div className="section-eyebrow" style={{ marginBottom: 24 }}>
+              <span>✦</span> Trip Planning, Simplified
             </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Link href={primaryHref}>
-                <Button className="h-12 rounded-full px-6 text-base">
-                  {primaryLabel}
-                  <ArrowRight className="size-4" />
-                </Button>
-              </Link>
-              <Link href={appUser ? primaryHref : "/sign-in"}>
-                <Button variant="outline" className="h-12 rounded-full px-6 text-base">
-                  {appUser ? "Open Account" : "View Account Flow"}
-                </Button>
-              </Link>
+            <h1 className="hero-h1" style={{ fontSize: 52, fontWeight: 800, color: "#1e293b", lineHeight: 1.05, letterSpacing: "-0.03em", marginBottom: 20 }}>
+              Plan your trip.<br />
+              <span style={{ background: "linear-gradient(110deg, #f5a623 10%, #e8554e 90%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                Skip the chaos.
+              </span>
+            </h1>
+            <p style={{ fontSize: 17, color: "#64748b", lineHeight: 1.72, maxWidth: 460, marginBottom: 32, fontWeight: 400 }}>
+              One clean workspace for your route, days, budget, and notes — so planning stays easy and the trip is actually fun to look forward to.
+            </p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 40 }}>
+              <a href="/start" className="btn-dark">Start Planning →</a>
+              <a href="#product" className="btn-soft">See the product</a>
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              {[
-                "Itinerary builder",
-                "Trip templates",
-                "Lifetime access",
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="rounded-2xl border border-white/70 bg-white/75 px-4 py-4 text-sm text-slate-700 shadow-[0_20px_45px_rgba(17,46,72,0.06)] backdrop-blur-xl"
-                >
-                  {item}
+            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+              {[["⏱️ Minutes","to get started"],["🗂️ One view","for the full trip"],["💸 $49","lifetime, no sub"]].map(([v,s]) => (
+                <div key={v} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{v}</div>
+                  <div style={{ fontSize: 13, color: "#94a3b8" }}>{s}</div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="relative">
-            <div className="absolute inset-x-10 top-8 -z-10 h-64 rounded-full bg-[radial-gradient(circle,rgba(27,154,150,0.18),rgba(27,154,150,0))] blur-3xl" />
-            <div className="rounded-[2rem] border border-white/65 bg-white/80 p-5 shadow-[0_34px_90px_rgba(17,46,72,0.12)] backdrop-blur-xl">
-              <div className="rounded-[1.6rem] border border-slate-200/80 bg-slate-950 px-5 py-5 text-white">
-                <div className="flex items-center justify-between">
+          {/* App preview card */}
+          <div className="float-in d2">
+            <div style={{
+              background: "rgba(255,255,255,0.6)", backdropFilter: "blur(24px)",
+              borderRadius: 32, border: "1.5px solid rgba(255,255,255,0.95)",
+              padding: 6,
+              boxShadow: "0 24px 80px rgba(0,0,0,0.1), 0 0 0 1px rgba(255,255,255,0.5) inset",
+            }}>
+              <div style={{ background: "linear-gradient(150deg, #fff8ee 0%, #fdfeff 50%, #f0fbf6 100%)", borderRadius: 28, padding: 24 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.32em] text-cyan-200/70">
-                      Northstar Workspace
-                    </p>
-                    <h2 className="mt-2 text-2xl font-semibold">California Coast Escape</h2>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 6 }}>WORKSPACE</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.03em" }}>Southwest Road Trip</div>
+                    <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 3 }}>Apr. 8 – Apr. 18 · 11 days</div>
                   </div>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/75">
-                    7 days
-                  </span>
-                </div>
-                <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.24em] text-white/45">Activities</p>
-                    <p className="mt-3 text-3xl font-semibold">24</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.24em] text-white/45">Stops</p>
-                    <p className="mt-3 text-3xl font-semibold">11</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.24em] text-white/45">Booked</p>
-                    <p className="mt-3 text-3xl font-semibold">$1.9k</p>
+                  <div style={{ background: "linear-gradient(135deg, #f5a623, #e8554e)", borderRadius: 100, padding: "7px 16px", fontSize: 12, fontWeight: 700, color: "#fff", boxShadow: "0 4px 12px rgba(232,85,78,0.35)", whiteSpace: "nowrap" }}>
+                    11 days ✦
                   </div>
                 </div>
-                <div className="mt-5 space-y-3">
-                  {[
-                    ["Day 1", "Arrive, rental car, downtown dinner"],
-                    ["Day 2", "Coastal drive, lunch stop, sunset overlook"],
-                    ["Day 3", "Hotel check-in, museum tickets, evening notes"],
-                  ].map(([label, text]) => (
-                    <div
-                      key={label}
-                      className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
-                    >
-                      <div>
-                        <p className="text-sm font-medium">{label}</p>
-                        <p className="text-sm text-white/60">{text}</p>
-                      </div>
-                      <CheckCircle2 className="size-4 text-cyan-300" />
+
+                <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+                  <span className="badge" style={{ background: "#fff1f1", color: "#e8554e", border: "1px solid #ffd0d0" }}>⚠️ 1 overdue</span>
+                  <span className="badge" style={{ background: "#fff8ec", color: "#f5a623", border: "1px solid #ffe8bc" }}>🔔 3 due soon</span>
+                </div>
+
+                <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 18 }}>
+                  {PREVIEW_DAYS.map((d, i) => (
+                    <button key={i} className={`day-pill ${activeDay === i ? "active" : ""}`} onClick={() => setActiveDay(i)}>
+                      <span style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>{d.label}</span>
+                      <span style={{ fontSize: 10, opacity: 0.6, lineHeight: 1, marginTop: 2 }}>{d.date}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+                  {STATS.map((s) => (
+                    <div key={s.val} className="stat-card" style={{ background: s.bg, borderColor: s.border }}>
+                      <div style={{ fontSize: 16, marginBottom: 6 }}>{s.icon}</div>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.03em" }}>{s.val}</div>
+                      <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 3, fontWeight: 500 }}>{s.sub}</div>
                     </div>
                   ))}
                 </div>
+
+                <div style={{
+                  borderRadius: 20, padding: "18px 20px",
+                  background: PREVIEW_DAYS[activeDay].color,
+                  transition: "background 0.3s ease",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 5 }}>NEXT UP</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{PREVIEW_DAYS[activeDay].title}</div>
+                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>{PREVIEW_DAYS[activeDay].meta}</div>
+                    </div>
+                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: PREVIEW_DAYS[activeDay].dot, boxShadow: `0 0 0 4px ${PREVIEW_DAYS[activeDay].dot}30` }} />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="mt-20 grid gap-6 lg:grid-cols-2">
-          <div className="rounded-[2rem] border border-white/60 bg-white/75 p-8 shadow-[0_28px_70px_rgba(17,46,72,0.08)]">
-            <p className="text-xs uppercase tracking-[0.3em] text-primary/80">Problem</p>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
-              Travel planning usually lives in six different places.
-            </h2>
-            <p className="mt-4 text-base leading-8 text-slate-600">
-              Notes, screenshots, open tabs, booking emails, maps, and reminders rarely stay
-              in sync. Northstar gives you one structured dashboard so the trip stays readable.
-            </p>
+      {/* FEATURES */}
+      <section id="product" style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 20px 60px", position: "relative", zIndex: 1 }}>
+        <div style={{ textAlign: "center", marginBottom: 40 }}>
+          <div className="section-eyebrow" style={{ marginBottom: 16 }}>🗺️ Product</div>
+          <h2 style={{ fontSize: 38, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.03em", lineHeight: 1.1 }}>Everything in one place.</h2>
+          <p style={{ fontSize: 16, color: "#64748b", marginTop: 12, maxWidth: 440, margin: "12px auto 0", lineHeight: 1.7 }}>
+            No jumping between tabs. No messy spreadsheets. Just a clean, calm workspace.
+          </p>
+        </div>
+        <div className="four-col" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
+          {FEATURES.map((f, i) => (
+            <div key={i} className="feature-card" style={{ background: f.bg, borderColor: f.border }}>
+              <div style={{ fontSize: 28, marginBottom: 14 }}>{f.icon}</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#1e293b", marginBottom: 8, letterSpacing: "-0.02em" }}>{f.label}</div>
+              <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.65 }}>{f.body}</p>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 14, background: "#1e293b", borderRadius: 24, padding: "32px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 20, boxShadow: "0 16px 48px rgba(30,41,59,0.22)" }}>
+          <div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700, marginBottom: 8 }}>Why it works</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>One workspace. Fewer tabs. Better trips.</div>
           </div>
-          <div className="rounded-[2rem] border border-primary/10 bg-[linear-gradient(135deg,rgba(17,65,102,0.96),rgba(21,117,132,0.84))] p-8 text-white shadow-[0_28px_70px_rgba(17,46,72,0.14)]">
-            <p className="text-xs uppercase tracking-[0.3em] text-white/65">Solution</p>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight">
-              One planning workspace from rough idea to final itinerary.
-            </h2>
-            <p className="mt-4 text-base leading-8 text-white/78">
-              Build day-by-day plans, organize activities, track costs, keep reminders visible,
-              and move faster without rebuilding the same trip structure every time.
-            </p>
-          </div>
-        </section>
-
-        <section className="mt-20">
-          <div className="max-w-2xl">
-            <p className="text-xs uppercase tracking-[0.3em] text-primary/80">Features</p>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
-              Built for organized travelers, not travel content browsing.
-            </h2>
-          </div>
-          <div className="mt-8 grid gap-5 lg:grid-cols-2">
-            {landingFeatureHighlights.map((feature, index) => (
-              <div
-                key={feature.title}
-                className="rounded-[1.8rem] border border-white/70 bg-white/78 p-6 shadow-[0_24px_50px_rgba(17,46,72,0.06)]"
-              >
-                <p className="text-sm text-primary/75">0{index + 1}</p>
-                <h3 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">
-                  {feature.title}
-                </h3>
-                <p className="mt-3 text-base leading-7 text-slate-600">
-                  {feature.description}
-                </p>
+          <div style={{ display: "flex", gap: 10 }}>
+            {[["Days","Mapped clearly","#fff8ec"],["Costs","In context","#edf7ff"],["Reminders","When needed","#edfbf3"]].map(([l,t,bg]) => (
+              <div key={l} style={{ background: bg, borderRadius: 16, padding: "14px 18px", minWidth: 100 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#1e293b" }}>{l}</div>
+                <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>{t}</div>
               </div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="mt-20 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-          <div className="rounded-[2rem] border border-white/60 bg-white/75 p-8 shadow-[0_24px_60px_rgba(17,46,72,0.06)]">
-            <p className="text-xs uppercase tracking-[0.3em] text-primary/80">Workflow</p>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
-              A simple planning loop that stays structured.
-            </h2>
-            <div className="mt-6 space-y-3">
-              {landingWorkflow.map((step, index) => (
-                <div
-                  key={step}
-                  className="flex items-center gap-4 rounded-2xl border border-slate-200/70 bg-slate-50 px-4 py-4"
-                >
-                  <span className="inline-flex size-10 items-center justify-center rounded-full bg-slate-950 text-sm font-semibold text-white">
-                    {index + 1}
-                  </span>
-                  <p className="text-base font-medium text-slate-900">{step}</p>
+      {/* HOW IT WORKS */}
+      <section id="flow" style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 20px 60px", position: "relative", zIndex: 1 }}>
+        <div style={{ background: "linear-gradient(145deg, #eaf4ff 0%, #fdfff5 50%, #fff5ea 100%)", borderRadius: 32, padding: "52px 48px", border: "1.5px solid #e8f0ff" }}>
+          <div style={{ marginBottom: 40 }}>
+            <div className="section-eyebrow" style={{ marginBottom: 16 }}>⚡ How It Works</div>
+            <h2 style={{ fontSize: 36, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.03em", lineHeight: 1.1 }}>From rough idea to finished itinerary.</h2>
+          </div>
+          <div className="three-col" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+            {STEPS.map((s, i) => (
+              <div key={i} className="step-card">
+                <div style={{ fontSize: 32, fontWeight: 800, color: "#e2e8f0", letterSpacing: "-0.04em", lineHeight: 1, marginBottom: 16 }}>{s.n}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#1e293b", marginBottom: 8, letterSpacing: "-0.02em" }}>{s.title}</div>
+                <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.65 }}>{s.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* PRICING */}
+      <section id="pricing" style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 20px 60px", position: "relative", zIndex: 1 }}>
+        <div className="two-col" style={{ display: "grid", gridTemplateColumns: "0.9fr 1.1fr", gap: 14 }}>
+          <div style={{ background: "linear-gradient(145deg, #fff4de 0%, #ffe8d0 50%, #fffdf9 100%)", borderRadius: 28, padding: "44px 40px", border: "1.5px solid #ffe8bc" }}>
+            <div className="section-eyebrow" style={{ marginBottom: 20 }}>💸 Pricing</div>
+            <div style={{ fontSize: 60, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.04em", lineHeight: 1 }}>$49</div>
+            <div style={{ fontSize: 14, color: "#94a3b8", marginTop: 6, marginBottom: 20, fontWeight: 600 }}>one-time · lifetime access</div>
+            <p style={{ fontSize: 15, color: "#64748b", lineHeight: 1.72, maxWidth: 320, marginBottom: 28 }}>
+              Pay once. Plan every trip, forever. No subscriptions, no renewals, no gotchas.
+            </p>
+            <a href="/start" className="btn-dark">Get Lifetime Access →</a>
+          </div>
+          <div className="card" style={{ padding: "44px 40px" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#64748b", marginBottom: 24 }}>Everything in the core workspace</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 28 }}>
+              {["Multiple private trips","Day-by-day planner","Budget & costs","Notes & bookings","Reminders","Export support"].map((item) => (
+                <div key={item} style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", background: "#f8fafc", borderRadius: 12, fontSize: 13, fontWeight: 500, color: "#475569", border: "1px solid #f1f5f9" }}>
+                  <span style={{ color: "#1fb87a", fontSize: 14 }}>✓</span> {item}
                 </div>
               ))}
             </div>
-          </div>
-          <div className="grid gap-5 sm:grid-cols-2">
-            {[
-              {
-                icon: LayoutDashboard,
-                title: "Trip dashboard",
-                body: "Keep the itinerary, reminders, and progress visible in one place.",
-              },
-              {
-                icon: CalendarDays,
-                title: "Day planner",
-                body: "Break every trip into clear day blocks with notes and logistics.",
-              },
-              {
-                icon: Map,
-                title: "Route context",
-                body: "See locations and movement across the full trip without losing detail.",
-              },
-              {
-                icon: Wallet,
-                title: "Budget awareness",
-                body: "Track booked and paid costs next to the itinerary they affect.",
-              },
-            ].map((item) => (
-              <div
-                key={item.title}
-                className="rounded-[1.8rem] border border-white/70 bg-white/78 p-6 shadow-[0_24px_50px_rgba(17,46,72,0.06)]"
-              >
-                <item.icon className="size-6 text-primary" />
-                <h3 className="mt-4 text-xl font-semibold tracking-tight text-slate-950">
-                  {item.title}
-                </h3>
-                <p className="mt-3 text-sm leading-7 text-slate-600">{item.body}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="mt-20 rounded-[2.2rem] border border-primary/10 bg-white/78 p-8 shadow-[0_28px_70px_rgba(17,46,72,0.08)] lg:p-10">
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-primary/80">Pricing</p>
-              <h2 className="mt-4 text-4xl font-semibold tracking-tight text-slate-950">
-                {product.priceLabel}
-              </h2>
-              <p className="mt-3 max-w-2xl text-base leading-8 text-slate-600">
-                {product.priceDescription} Future AI planning features can be added later as a
-                separate subscription.
-              </p>
-            </div>
-            <Link href={appUser ? (appUser.hasLifetimeAccess ? "/app" : "/unlock") : "/sign-up"}>
-              <Button className="h-12 rounded-full px-6">
-                {appUser?.hasLifetimeAccess ? "Open your workspace" : "Get lifetime access"}
-                <ArrowRight className="size-4" />
-              </Button>
-            </Link>
-          </div>
-        </section>
-
-        <section className="mt-20">
-          <p className="text-xs uppercase tracking-[0.3em] text-primary/80">FAQ</p>
-          <div className="mt-8 grid gap-5 lg:grid-cols-2">
-            {landingFaqs.map((item) => (
-              <div
-                key={item.question}
-                className="rounded-[1.7rem] border border-white/70 bg-white/78 p-6 shadow-[0_24px_50px_rgba(17,46,72,0.06)]"
-              >
-                <h3 className="text-lg font-semibold tracking-tight text-slate-950">
-                  {item.question}
-                </h3>
-                <p className="mt-3 text-sm leading-7 text-slate-600">{item.answer}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="mt-20 rounded-[2.2rem] border border-primary/10 bg-[linear-gradient(135deg,rgba(17,65,102,0.98),rgba(21,117,132,0.88))] p-8 text-white shadow-[0_34px_90px_rgba(17,46,72,0.16)] lg:flex lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs uppercase tracking-[0.3em] text-white/65">Start planning</p>
-            <h2 className="mt-4 text-4xl font-semibold tracking-tight">
-              Build your next trip in one structured workspace.
-            </h2>
-            <p className="mt-4 text-base leading-8 text-white/78">
-              Sign up, unlock lifetime access, and start with a blank trip or a ready-made
-              template.
+            <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.72 }}>
+              Built for real travelers. No clutter, no monthly fees — just a polished planning workspace that works every time you open it.
             </p>
           </div>
-          <div className="mt-6 lg:mt-0">
-            <Link href={primaryHref}>
-              <Button className="h-12 rounded-full bg-white px-6 text-slate-950 hover:bg-white/90">
-                {primaryLabel}
-                <ArrowRight className="size-4" />
-              </Button>
-            </Link>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 20px 60px", position: "relative", zIndex: 1 }}>
+        <div style={{ marginBottom: 36 }}>
+          <div className="section-eyebrow" style={{ marginBottom: 16 }}>❓ FAQ</div>
+          <h2 style={{ fontSize: 36, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.03em" }}>Straight answers.</h2>
+        </div>
+        <div className="two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {FAQS.map((f, i) => (
+            <div key={i} className="faq-card">
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#1e293b", marginBottom: 10, letterSpacing: "-0.02em" }}>{f.q}</div>
+              <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.72 }}>{f.a}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 20px 80px", position: "relative", zIndex: 1 }}>
+        <div style={{
+          borderRadius: 32, padding: "60px 52px",
+          background: "linear-gradient(135deg, #1e293b 0%, #1e4060 45%, #0f3d2e 100%)",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          flexWrap: "wrap", gap: 28,
+          boxShadow: "0 28px 80px rgba(30,41,59,0.28)",
+          position: "relative", overflow: "hidden",
+        }}>
+          <div style={{ position: "absolute", top: -60, right: -60, width: 240, height: 240, borderRadius: "50%", background: "rgba(245,166,35,0.12)", filter: "blur(60px)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", bottom: -40, left: "30%", width: 180, height: 180, borderRadius: "50%", background: "rgba(31,184,122,0.1)", filter: "blur(50px)", pointerEvents: "none" }} />
+          <div style={{ maxWidth: 500, position: "relative" }}>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 700, marginBottom: 16 }}>Start Planning</div>
+            <h2 style={{ fontSize: 38, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1.1, marginBottom: 14 }}>
+              Build your next trip<br />in one clean workspace.
+            </h2>
+            <p style={{ fontSize: 16, color: "rgba(255,255,255,0.6)", lineHeight: 1.7 }}>
+              Shape the route, add the details, and travel without the clutter.
+            </p>
           </div>
-        </section>
-      </div>
+          <a href="/start"
+            className="btn-soft"
+            style={{ fontSize: 15, fontWeight: 800, padding: "16px 32px", boxShadow: "0 8px 28px rgba(0,0,0,0.2)" }}
+          >
+            Get Started Free →
+          </a>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer style={{ borderTop: "1px solid #e2e8f0", padding: "24px 20px", maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, position: "relative", zIndex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 26, height: 26, borderRadius: "50%", background: "linear-gradient(135deg, #f5a623, #e8554e)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>✦</div>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>Northstar</span>
+          <span style={{ fontSize: 13, color: "#94a3b8" }}>— clean travel planning, finally.</span>
+        </div>
+        <nav style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+          {[["Product","#product"],["How It Works","#flow"],["Pricing","#pricing"],["FAQ","#faq"]].map(([l,h]) => (
+            <a key={h} href={h} className="nav-link-footer">{l}</a>
+          ))}
+        </nav>
+      </footer>
     </div>
   );
 }

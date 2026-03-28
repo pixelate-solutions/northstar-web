@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { getAuthenticatedClerkUserId, getCurrentAppUser, isClerkConfigured } from "@/lib/auth";
 import { getStripeConfigurationError, isStripeConfigured } from "@/lib/billing";
 import { product } from "@/lib/product";
+import { buildAuthHref } from "@/lib/start";
 
 export default async function UnlockPage() {
   if (!isClerkConfigured()) {
@@ -23,12 +24,12 @@ export default async function UnlockPage() {
 
   const clerkUserId = await getAuthenticatedClerkUserId();
   if (!clerkUserId) {
-    redirect("/sign-up");
+    redirect(buildAuthHref("/sign-up"));
   }
 
   const appUser = await getCurrentAppUser();
   if (!appUser) {
-    redirect("/sign-up");
+    redirect(buildAuthHref("/sign-up"));
   }
 
   if (appUser.hasLifetimeAccess) {

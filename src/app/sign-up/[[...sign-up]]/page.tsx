@@ -3,8 +3,16 @@ import { SignUp } from "@clerk/nextjs";
 
 import { isClerkConfigured } from "@/lib/auth";
 import { product } from "@/lib/product";
+import { buildAuthHref, getSafeRedirectPath } from "@/lib/start";
 
-export default function SignUpPage() {
+export default async function SignUpPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ redirect_url?: string }>;
+}) {
+  const { redirect_url: redirectUrlParam } = await searchParams;
+  const redirectUrl = getSafeRedirectPath(redirectUrlParam);
+
   if (!isClerkConfigured()) {
     return (
       <div className="mx-auto flex min-h-screen max-w-3xl items-center px-6 py-16">
@@ -37,7 +45,13 @@ export default function SignUpPage() {
           </Link>
         </div>
         <div className="flex items-center justify-center rounded-[2rem] bg-[linear-gradient(135deg,rgba(17,65,102,0.98),rgba(21,117,132,0.88))] p-6 text-white shadow-[0_30px_90px_rgba(17,46,72,0.18)]">
-          <SignUp path="/sign-up" routing="path" signInUrl="/sign-in" />
+          <SignUp
+            path="/sign-up"
+            routing="path"
+            signInUrl={buildAuthHref("/sign-in", redirectUrl)}
+            forceRedirectUrl={redirectUrl}
+            fallbackRedirectUrl={redirectUrl}
+          />
         </div>
       </div>
     </div>
