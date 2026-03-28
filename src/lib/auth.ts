@@ -89,6 +89,16 @@ export async function upsertAppUserFromClerkData(input: {
       lastName,
       fullName,
     })
+    .onConflictDoUpdate({
+      target: appUsers.clerkUserId,
+      set: {
+        email,
+        firstName,
+        lastName,
+        fullName,
+        updatedAt: new Date(),
+      },
+    })
     .returning();
 
   return created ?? null;

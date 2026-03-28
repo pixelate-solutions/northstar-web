@@ -180,7 +180,7 @@ export function TripSharingDialog({
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
               Add User
             </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_10rem_auto]">
+            <div className="mt-3 space-y-3">
               <Input
                 type="email"
                 value={inviteEmail}
@@ -188,21 +188,23 @@ export function TripSharingDialog({
                 placeholder="name@example.com"
                 disabled={isInviting}
               />
-              <select
-                className="h-8 rounded-lg border border-input bg-input/30 px-2.5 text-sm"
-                value={inviteRole}
-                onChange={(event) =>
-                  setInviteRole(event.target.value as "viewer" | "collaborator")
-                }
-                disabled={isInviting}
-              >
-                <option value="viewer">Viewer</option>
-                <option value="collaborator">Collaborator</option>
-              </select>
-              <Button onClick={() => void handleInvite()} disabled={isInviting}>
-                {isInviting ? <Loader2 className="size-4 animate-spin" /> : null}
-                Add User
-              </Button>
+              <div className="grid gap-3 sm:grid-cols-[10rem_auto] sm:justify-end">
+                <select
+                  className="h-8 rounded-lg border border-input bg-input/30 px-2.5 text-sm"
+                  value={inviteRole}
+                  onChange={(event) =>
+                    setInviteRole(event.target.value as "viewer" | "collaborator")
+                  }
+                  disabled={isInviting}
+                >
+                  <option value="viewer">Viewer</option>
+                  <option value="collaborator">Collaborator</option>
+                </select>
+                <Button onClick={() => void handleInvite()} disabled={isInviting}>
+                  {isInviting ? <Loader2 className="size-4 animate-spin" /> : null}
+                  Add User
+                </Button>
+              </div>
             </div>
           </div>
 
