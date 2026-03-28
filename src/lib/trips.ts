@@ -8,17 +8,12 @@ import {
   appUsers,
   days,
   events,
-  expenses,
-  locations,
-  packingItems,
-  reminders,
   tripMemberships,
   trips,
   type AppUser,
   type Trip,
 } from "@/db/schema";
 import type { TripAccessRole, TripListItem } from "@/lib/types";
-import { loadSouthwestTemplate } from "@/lib/southwest-template";
 
 interface CreateTripInput {
   user: AppUser;
@@ -26,10 +21,7 @@ interface CreateTripInput {
   destination?: string | null;
   startDate?: string | null;
   totalDays?: number;
-  importTemplate?: boolean;
 }
-
-type LegacySourceTrip = Awaited<ReturnType<typeof getLegacySourceTrip>>;
 
 function sortTripsByFreshness<T extends { updatedAt: Date; createdAt: Date }>(items: T[]) {
   return [...items].sort((a, b) => {
@@ -93,159 +85,6 @@ async function getLegacySourceTrip(db: NonNullable<ReturnType<typeof getDb>>) {
       reminders: true,
     },
   });
-}
-
-async function cloneTripFromLegacySource({
-  db,
-  user,
-  name,
-  destination,
-  sourceTrip,
-}: {
-  db: NonNullable<ReturnType<typeof getDb>>;
-  user: AppUser;
-  name: string;
-  destination?: string | null;
-  sourceTrip: NonNullable<LegacySourceTrip>;
-}) {
-  const [createdTrip] = await db
-    .insert(trips)
-    .values({
-      ownerId: user.id,
-      name,
-      destination: destination ?? sourceTrip.destination ?? "Southwest U.S. Road Trip",
-      summary:
-        sourceTrip.summary ??
-        "Imported Southwest itinerary template with activities, budget, reminders, and locations.",
-      coverImageUrl: sourceTrip.coverImageUrl,
-      templateKey: "southwest-road-trip",
-      startDate: sourceTrip.startDate,
-      endDate: sourceTrip.endDate,
-    })
-    .returning();
-
-  if (!createdTrip) {
-    return null;
-  }
-
-  const insertedDays = await db
-    .insert(days)
-    .values(
-      sourceTrip.days.map((day) => ({
-        tripId: createdTrip.id,
-        date: day.date,
-        dayNumber: day.dayNumber,
-        title: day.title,
-        location: day.location,
-        sleepLocation: day.sleepLocation,
-        driveInfo: day.driveInfo,
-        notes: day.notes,
-        coverImageUrl: day.coverImageUrl,
-      }))
-    )
-    .returning();
-
-  const dayIdByNumber = new Map(insertedDays.map((day) => [day.dayNumber, day.id]));
-  const dayIdByLegacyId = new Map(
-    sourceTrip.days.map((day) => [day.id, dayIdByNumber.get(day.dayNumber)!])
-  );
-
-  const sourceEvents = sourceTrip.days.flatMap((day) =>
-    day.events.map((event) => ({
-      dayId: dayIdByNumber.get(day.dayNumber)!,
-      title: event.title,
-      startTime: event.startTime,
-      endTime: event.endTime,
-      category: event.category,
-      description: event.description,
-      location: event.location,
-      lat: event.lat,
-      lng: event.lng,
-      tip: event.tip,
-      cost: event.cost,
-      isBooked: event.isBooked,
-      sortOrder: event.sortOrder,
-      createdAt: event.createdAt,
-      updatedAt: event.updatedAt,
-    }))
-  );
-
-  if (sourceEvents.length) {
-    await db.insert(events).values(sourceEvents);
-  }
-
-  if (sourceTrip.expenses.length) {
-    await db.insert(expenses).values(
-      sourceTrip.expenses.map((expense) => ({
-        tripId: createdTrip.id,
-        category: expense.category,
-        description: expense.description,
-        amount: expense.amount,
-        isBooked: expense.isBooked,
-        isPaid: expense.isPaid,
-        purchaseDate: expense.purchaseDate,
-        receiptUrl: expense.receiptUrl,
-        notes: expense.notes,
-      }))
-    );
-  }
-
-  if (sourceTrip.packingItems.length) {
-    await db.insert(packingItems).values(
-      sourceTrip.packingItems.map((item) => ({
-        tripId: createdTrip.id,
-        category: item.category,
-        name: item.name,
-        quantity: item.quantity,
-        isPacked: item.isPacked,
-        isEssential: item.isEssential,
-        daySpecific: item.daySpecific ? dayIdByLegacyId.get(item.daySpecific) ?? null : null,
-        notes: item.notes,
-      }))
-    );
-  }
-
-  if (sourceTrip.reminders.length) {
-    await db.insert(reminders).values(
-      sourceTrip.reminders.map((reminder) => ({
-        tripId: createdTrip.id,
-        title: reminder.title,
-        body: reminder.body,
-        dueDate: reminder.dueDate,
-        isDone: reminder.isDone,
-        priority: reminder.priority,
-        dayId: reminder.dayId ? dayIdByLegacyId.get(reminder.dayId) ?? null : null,
-      }))
-    );
-  }
-
-  const sourceLocations = sourceTrip.days.flatMap((day) =>
-    day.locations.map((location) => ({
-      dayId: dayIdByNumber.get(day.dayNumber)!,
-      name: location.name,
-      lat: location.lat,
-      lng: location.lng,
-      type: location.type,
-      description: location.description,
-      imageUrl: location.imageUrl,
-      tip: location.tip,
-      googleMapsUrl: location.googleMapsUrl,
-    }))
-  );
-
-  if (sourceLocations.length) {
-    await db.insert(locations).values(sourceLocations);
-  }
-
-  await db
-    .update(appUsers)
-    .set({
-      activeTripId: createdTrip.id,
-      updatedAt: new Date(),
-    })
-    .where(eq(appUsers.id, user.id));
-
-  return createdTrip;
 }
 
 async function repairTripEventLocationsFromLegacy({
@@ -467,7 +306,6 @@ export async function createTrip({
   destination,
   startDate,
   totalDays = 7,
-  importTemplate = false,
 }: CreateTripInput): Promise<Trip | null> {
   const db = getDb();
   if (!db) {
@@ -475,157 +313,6 @@ export async function createTrip({
   }
 
   const tripName = name.trim() || "Untitled Trip";
-
-  if (importTemplate) {
-    const legacySourceTrip = await getLegacySourceTrip(db);
-    if (legacySourceTrip) {
-      return cloneTripFromLegacySource({
-        db,
-        user,
-        name: tripName,
-        destination,
-        sourceTrip: legacySourceTrip,
-      });
-    }
-
-    const template = await loadSouthwestTemplate();
-    const [createdTrip] = await db
-      .insert(trips)
-      .values({
-        ownerId: user.id,
-        name: tripName,
-        destination: destination ?? "Southwest U.S. Road Trip",
-        summary:
-          "Imported Southwest itinerary template with activities, budget, reminders, and locations.",
-        coverImageUrl: template.days[0]?.coverImageUrl ?? null,
-        templateKey: "southwest-road-trip",
-        startDate: template.days[0]?.date ?? null,
-        endDate: template.days.at(-1)?.date ?? null,
-      })
-      .returning();
-
-    if (!createdTrip) {
-      return null;
-    }
-
-    const insertedDays = await db
-      .insert(days)
-      .values(
-        template.days.map((day) => ({
-          tripId: createdTrip.id,
-          date: day.date,
-          dayNumber: day.dayNumber,
-          title: day.title,
-          location: day.location,
-          sleepLocation: day.sleepLocation ?? null,
-          driveInfo: day.driveInfo ?? null,
-          notes: day.notes ?? null,
-          coverImageUrl: day.coverImageUrl ?? null,
-        }))
-      )
-      .returning();
-
-    const dayIdByNumber = new Map(insertedDays.map((day) => [day.dayNumber, day.id]));
-
-    if (template.events.length) {
-      await db.insert(events).values(
-        template.events.map((event) => ({
-          dayId: dayIdByNumber.get(event.dayNumber)!,
-          title: event.title,
-          startTime: event.startTime ?? null,
-          endTime: event.endTime ?? null,
-          category: event.category,
-          description: event.description ?? null,
-          location: event.location ?? null,
-          lat:
-            event.lat === undefined || event.lat === null || event.lat === ""
-              ? null
-              : String(event.lat),
-          lng:
-            event.lng === undefined || event.lng === null || event.lng === ""
-              ? null
-              : String(event.lng),
-          tip: event.tip ?? null,
-          cost:
-            event.cost === undefined || event.cost === null || event.cost === ""
-              ? null
-              : String(event.cost),
-          isBooked: Boolean(event.isBooked),
-          sortOrder: event.sortOrder ?? 0,
-        }))
-      );
-    }
-
-    if (template.expenses.length) {
-      await db.insert(expenses).values(
-        template.expenses.map((expense) => ({
-          tripId: createdTrip.id,
-          category: String(expense.category ?? "other"),
-          description: String(expense.description ?? ""),
-          amount: String(expense.amount ?? 0),
-          isBooked: Boolean(expense.isBooked),
-          isPaid: Boolean(expense.isPaid),
-          purchaseDate: (expense.purchaseDate as string | null | undefined) ?? null,
-          receiptUrl: (expense.receiptUrl as string | null | undefined) ?? null,
-          notes: (expense.notes as string | null | undefined) ?? null,
-        }))
-      );
-    }
-
-    if (template.packingItems.length) {
-      await db.insert(packingItems).values(
-        template.packingItems.map((item) => ({
-          tripId: createdTrip.id,
-          category: String(item.category ?? "other"),
-          name: String(item.name ?? ""),
-          quantity: Number(item.quantity ?? 1),
-          isPacked: Boolean(item.isPacked),
-          isEssential: Boolean(item.isEssential),
-          notes: (item.notes as string | null | undefined) ?? null,
-        }))
-      );
-    }
-
-    if (template.reminders.length) {
-      await db.insert(reminders).values(
-        template.reminders.map((reminder) => ({
-          tripId: createdTrip.id,
-          title: String(reminder.title ?? ""),
-          body: (reminder.body as string | null | undefined) ?? null,
-          dueDate: (reminder.dueDate as string | null | undefined) ?? null,
-          isDone: Boolean(reminder.isDone),
-          priority:
-            (reminder.priority as "high" | "medium" | "low" | undefined) ?? "medium",
-        }))
-      );
-    }
-
-    if (template.locations.length) {
-      await db.insert(locations).values(
-        template.locations.map((location) => ({
-          dayId: dayIdByNumber.get(location.dayNumber)!,
-          name: location.name,
-          lat: location.lat,
-          lng: location.lng,
-          type: location.type,
-          description: location.description ?? null,
-          imageUrl: location.imageUrl ?? null,
-          tip: location.tip ?? null,
-          googleMapsUrl: location.googleMapsUrl ?? null,
-        }))
-      );
-    }
-
-    await db
-      .update(appUsers)
-      .set({
-        activeTripId: createdTrip.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(appUsers.id, user.id));
-
-    return createdTrip;
-  }
 
   const safeStartDate = startDate?.trim() || new Date().toISOString().slice(0, 10);
   const parsedTotalDays = Math.max(1, Math.min(60, totalDays));
@@ -696,8 +383,7 @@ export async function ensureStarterTrip(user: AppUser): Promise<TripListItem | n
 
   const createdTrip = await createTrip({
     user,
-    name: "Southwest Road Trip",
-    importTemplate: true,
+    name: "My First Trip",
   });
   return createdTrip ? toTripListItem(createdTrip, "owner") : null;
 }
@@ -802,4 +488,40 @@ export async function deleteTripsOwnedByUser(userId: number) {
   }
 
   await db.delete(trips).where(inArray(trips.id, userTrips.map((trip) => trip.id)));
+}
+
+export async function deleteTripForUser(userId: number, tripId: number) {
+  const db = getDb();
+  if (!db) {
+    return null;
+  }
+
+  const ownedTrip = await db.query.trips.findFirst({
+    where: and(eq(trips.id, tripId), eq(trips.ownerId, userId)),
+    columns: { id: true },
+  });
+
+  if (!ownedTrip) {
+    return null;
+  }
+
+  const remainingTrips = (await listTripsForUser(userId)).filter((trip) => trip.id !== tripId);
+
+  const [deletedTrip] = await db
+    .delete(trips)
+    .where(and(eq(trips.id, tripId), eq(trips.ownerId, userId)))
+    .returning();
+
+  await db
+    .update(appUsers)
+    .set({
+      activeTripId: remainingTrips[0]?.id ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(appUsers.id, userId));
+
+  return {
+    deletedTrip,
+    nextActiveTripId: remainingTrips[0]?.id ?? null,
+  };
 }

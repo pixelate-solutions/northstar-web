@@ -164,19 +164,19 @@ export function TripSharingDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="w-full max-w-[min(42rem,calc(100vw-2rem))] overflow-hidden">
+        <DialogHeader className="min-w-0">
           <DialogTitle className="flex items-center gap-2">
             <Users className="size-4" />
             Share {tripName}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="break-words leading-6">
             Owners can invite viewers or collaborators. Viewers can only view the trip. Collaborators can edit the trip. Only the owner can manage trip users.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4">
-          <div className="rounded-2xl border border-border/70 bg-card/70 p-4">
+        <div className="grid min-w-0 gap-4">
+          <div className="min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-card/70 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
               Add User
             </p>
@@ -188,9 +188,9 @@ export function TripSharingDialog({
                 placeholder="name@example.com"
                 disabled={isInviting}
               />
-              <div className="grid gap-3 sm:grid-cols-[10rem_auto] sm:justify-end">
+              <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,10rem)_auto] sm:justify-end">
                 <select
-                  className="h-8 rounded-lg border border-input bg-input/30 px-2.5 text-sm"
+                  className="h-8 min-w-0 rounded-lg border border-input bg-input/30 px-2.5 text-sm"
                   value={inviteRole}
                   onChange={(event) =>
                     setInviteRole(event.target.value as "viewer" | "collaborator")
@@ -208,7 +208,7 @@ export function TripSharingDialog({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-border/70 bg-card/70 p-4">
+          <div className="min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-card/70 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
               Trip Access
             </p>
@@ -224,10 +224,10 @@ export function TripSharingDialog({
                   return (
                     <div
                       key={member.membershipId ?? `owner-${member.userId}`}
-                      className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-white/70 p-3 sm:flex-row sm:items-center"
+                      className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border/60 bg-white/70 p-3 sm:flex-row sm:items-center"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <p className="truncate text-sm font-semibold text-slate-900">
                             {member.fullName || member.email || "Unnamed user"}
                           </p>
@@ -239,11 +239,11 @@ export function TripSharingDialog({
                       </div>
 
                       {member.isOwner ? (
-                        <p className="text-xs text-muted-foreground">Owner access</p>
+                        <p className="text-xs text-muted-foreground sm:shrink-0">Owner access</p>
                       ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 flex-col gap-2 sm:min-w-[13rem] sm:flex-row sm:items-center sm:justify-end">
                           <select
-                            className="h-8 rounded-lg border border-input bg-input/30 px-2.5 text-sm"
+                            className="h-8 min-w-0 rounded-lg border border-input bg-input/30 px-2.5 text-sm"
                             value={member.role}
                             onChange={(event) =>
                               void handleRoleChange(

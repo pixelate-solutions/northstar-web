@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Map, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -10,45 +10,16 @@ import { Card, CardContent } from "@/components/ui/card";
 
 export function OnboardingPanel({ tripName }: { tripName: string }) {
   const router = useRouter();
-  const [loading, setLoading] = useState<"complete" | "blank" | null>(null);
+  const [loading, setLoading] = useState(false);
 
   async function finishOnboarding() {
-    setLoading("complete");
+    setLoading(true);
     const response = await fetch("/api/onboarding/complete", { method: "POST" });
-    setLoading(null);
+    setLoading(false);
 
     if (!response.ok) {
       toast.error("Unable to update onboarding.");
       return;
-    }
-
-    router.refresh();
-  }
-
-  async function createBlankTrip() {
-    setLoading("blank");
-    const response = await fetch("/api/trips", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: "My Next Trip",
-        totalDays: 7,
-        importTemplate: false,
-      }),
-    });
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    setLoading(null);
-
-    if (!response.ok) {
-      toast.error(body?.error ?? "Unable to create a blank trip.");
-      return;
-    }
-
-    const done = await fetch("/api/onboarding/complete", { method: "POST" });
-    if (!done.ok) {
-      toast.error("Trip created, but onboarding could not be completed.");
     }
 
     router.refresh();
@@ -64,33 +35,24 @@ export function OnboardingPanel({ tripName }: { tripName: string }) {
           </p>
           <div className="space-y-3">
             <h2 className="max-w-2xl text-3xl font-semibold tracking-tight">
-              Your workspace is ready. Start with the imported template or spin up a blank trip.
+              Your blank trip is ready for planning.
             </h2>
             <p className="max-w-2xl text-sm text-white/78 sm:text-base">
-              The current Southwest itinerary has already been copied into your account as{" "}
-              <span className="font-medium text-white">{tripName}</span>. You can keep it,
-              edit it, or create a fresh trip from scratch.
+              We created <span className="font-medium text-white">{tripName}</span> as a fresh
+              blank trip so you can start building your itinerary from scratch.
             </p>
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
+        <div className="flex flex-col gap-3">
           <Button
             variant="secondary"
             className="h-12 justify-between rounded-2xl bg-white text-slate-900 hover:bg-white/90"
             onClick={finishOnboarding}
-            disabled={loading !== null}
+            disabled={loading}
           >
-            Open imported trip
+            Start planning
             <ArrowRight className="size-4" />
-          </Button>
-          <Button
-            className="h-12 justify-between rounded-2xl border border-white/25 bg-white/12 text-white hover:bg-white/18"
-            onClick={createBlankTrip}
-            disabled={loading !== null}
-          >
-            Create blank trip
-            <Map className="size-4" />
           </Button>
         </div>
       </CardContent>

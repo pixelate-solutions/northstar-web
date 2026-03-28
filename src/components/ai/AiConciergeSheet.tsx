@@ -35,6 +35,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { AiCard, AiConversationSummary, AiMessagePayload } from "@/lib/ai/types";
@@ -804,7 +810,28 @@ export function AiConciergeSheet({
   }
 
   if (!enabled) {
-    return null;
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="fixed bottom-6 right-6 z-50 inline-flex cursor-not-allowed">
+                <Button
+                  disabled
+                  className="rounded-full bg-slate-900 px-5 py-6 text-white shadow-[0_20px_60px_rgba(15,23,42,0.35)] opacity-60"
+                >
+                  <Sparkles className="size-4" />
+                  Northstar AI
+                </Button>
+              </span>
+            }
+          />
+          <TooltipContent side="left">
+            You are view only. AI is for collaborators.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
   }
 
   return (

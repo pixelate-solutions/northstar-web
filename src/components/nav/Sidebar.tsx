@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
-import { useClerk, useUser } from "@clerk/nextjs";
-import { ChevronDown, Pencil, Plus, Users } from "lucide-react";
+import { UserButton } from "@clerk/nextjs";
+import { ChevronDown, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +13,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -72,8 +72,6 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { openUserProfile } = useClerk();
-  const { user } = useUser();
   const { collapsed, toggleSidebar } = useSidebar();
   const [switchingTrip, setSwitchingTrip] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -81,6 +79,11 @@ export function Sidebar({
   const [creatingTrip, setCreatingTrip] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [sharingDialogOpen, setSharingDialogOpen] = useState(false);
+  const [tripPendingDelete, setTripPendingDelete] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [deletingTripId, setDeletingTripId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState(tripName);
   const [renamingTrip, setRenamingTrip] = useState(false);
   const bookedLabel = formatBookedAmount(totalBooked, collapsed);
@@ -127,7 +130,6 @@ export function Sidebar({
       body: JSON.stringify({
         name: createTripName.trim() || defaultTripName,
         totalDays: 7,
-        importTemplate: false,
       }),
     });
 
@@ -170,6 +172,28 @@ export function Sidebar({
 
     setRenameDialogOpen(false);
     toast.success("Trip renamed.");
+    router.refresh();
+  }
+
+  async function handleDeleteTrip() {
+    if (!tripPendingDelete || deletingTripId === tripPendingDelete.id) {
+      return;
+    }
+
+    setDeletingTripId(tripPendingDelete.id);
+    const response = await fetch(`/api/trips/${tripPendingDelete.id}`, {
+      method: "DELETE",
+    });
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    setDeletingTripId(null);
+
+    if (!response.ok) {
+      toast.error(body?.error ?? "Unable to delete trip.");
+      return;
+    }
+
+    setTripPendingDelete(null);
+    toast.success("Trip deleted.");
     router.refresh();
   }
 
@@ -224,11 +248,29 @@ export function Sidebar({
                         trip.id === activeTripId && "bg-secondary/70 text-foreground"
                       )}
                     >
-                      <div className="min-w-0">
-                        <p className="truncate text-[0.95rem] font-medium sm:text-sm">{trip.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {trip.id === activeTripId ? "Current trip" : trip.accessRole}
-                        </p>
+                      <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-[0.95rem] font-medium sm:text-sm">{trip.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {trip.id === activeTripId ? "Current trip" : trip.accessRole}
+                          </p>
+                        </div>
+                        {trip.accessRole === "owner" ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="shrink-0 text-slate-500 hover:text-red-600"
+                            title={`Delete ${trip.name}`}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setTripPendingDelete({ id: trip.id, name: trip.name });
+                            }}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        ) : null}
                       </div>
                     </DropdownMenuItem>
                   ))}
@@ -334,33 +376,20 @@ export function Sidebar({
             </p>
           </div>
           {!collapsed && clerkReady ? (
-            <button
-              type="button"
-              onClick={() => openUserProfile()}
-              className="flex w-full items-center justify-between rounded-[1.15rem] border border-white/40 bg-white/60 px-3 py-2 outline-none transition hover:bg-white/72 focus-visible:ring-2 focus-visible:ring-primary/30"
-            >
-              <div className="text-left">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-                  Account
-                </p>
-                <p className="mt-0.5 text-sm font-medium text-foreground">Manage profile</p>
-              </div>
-              <div className="relative size-8 overflow-hidden rounded-full bg-primary/10 ring-1 ring-primary/10">
-                {user?.imageUrl ? (
-                  <Image
-                    src={user.imageUrl}
-                    alt={user.fullName ?? user.username ?? "Profile image"}
-                    fill
-                    sizes="32px"
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="flex size-full items-center justify-center text-xs font-semibold text-primary">
-                    {getInitials(user?.fullName ?? user?.username ?? "Me")}
-                  </div>
-                )}
-              </div>
-            </button>
+            <UserButton
+              showName
+              appearance={{
+                elements: {
+                  userButtonTrigger:
+                    "flex w-full items-center justify-between rounded-[1.15rem] border border-white/40 bg-white/60 px-3 py-2 outline-none transition hover:bg-white/72 focus-visible:ring-2 focus-visible:ring-primary/30",
+                  userButtonBox:
+                    "flex w-full flex-row-reverse items-center justify-between gap-3",
+                  userButtonOuterIdentifier: "text-left",
+                  userButtonInnerIdentifier: "text-sm font-medium text-foreground",
+                  userButtonAvatarBox: "size-8 ring-1 ring-primary/10",
+                },
+              }}
+            />
           ) : null}
         </div>
       </SidebarFooter>
@@ -444,6 +473,42 @@ export function Sidebar({
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={Boolean(tripPendingDelete)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && deletingTripId === null) {
+            setTripPendingDelete(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete trip?</DialogTitle>
+            <DialogDescription>
+              {tripPendingDelete
+                ? `This will permanently delete "${tripPendingDelete.name}" and all of its trip data.`
+                : "This will permanently delete this trip and all of its data."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setTripPendingDelete(null)}
+              disabled={deletingTripId !== null}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleDeleteTrip()}
+              disabled={deletingTripId !== null}
+            >
+              {deletingTripId !== null ? "Deleting..." : "Delete Trip"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {canManageTripUsers ? (
         <TripSharingDialog
           open={sharingDialogOpen}
@@ -466,13 +531,4 @@ function formatBookedAmount(amount: number, compact: boolean) {
   }
 
   return formatCurrency(amount).replace(".00", "");
-}
-
-function getInitials(value: string) {
-  return value
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
 }

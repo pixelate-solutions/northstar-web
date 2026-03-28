@@ -14,7 +14,6 @@ export async function POST(request: Request) {
     destination?: string;
     startDate?: string;
     totalDays?: number;
-    importTemplate?: boolean;
   };
 
   const created = await createTrip({
@@ -23,7 +22,6 @@ export async function POST(request: Request) {
     destination: payload.destination,
     startDate: payload.startDate,
     totalDays: payload.totalDays,
-    importTemplate: Boolean(payload.importTemplate),
   });
 
   if (!created) {

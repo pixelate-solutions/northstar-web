@@ -4,7 +4,6 @@ import { getCurrentAppUser } from "@/lib/auth";
 import { getDashboardBundle } from "@/lib/server-data";
 import { ensureStarterTrip } from "@/lib/trips";
 import { getDefaultDate } from "@/lib/trip-data";
-import { OnboardingPanel } from "@/components/shared/OnboardingPanel";
 
 export const metadata = buildMetadata("Dashboard");
 export const dynamic = "force-dynamic";
@@ -30,7 +29,6 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {!appUser.onboardingCompleted ? <OnboardingPanel tripName={trip.name} /> : null}
       <DashboardClient
         bundle={bundle}
         defaultDate={

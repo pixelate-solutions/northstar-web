@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, Menu, Pencil, Plus, Users } from "lucide-react";
+import { ChevronDown, Menu, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { TripSharingDialog } from "@/components/trips/TripSharingDialog";
@@ -12,6 +12,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -59,6 +60,11 @@ export function MobileHeader({
   const [creatingTrip, setCreatingTrip] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [sharingDialogOpen, setSharingDialogOpen] = useState(false);
+  const [tripPendingDelete, setTripPendingDelete] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [deletingTripId, setDeletingTripId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState(tripName);
   const [renamingTrip, setRenamingTrip] = useState(false);
   const defaultTripName = `New Trip ${trips.length + 1}`;
@@ -125,7 +131,6 @@ export function MobileHeader({
       body: JSON.stringify({
         name: createTripName.trim() || defaultTripName,
         totalDays: 7,
-        importTemplate: false,
       }),
     });
 
@@ -169,6 +174,29 @@ export function MobileHeader({
 
     setRenameDialogOpen(false);
     toast.success("Trip renamed.");
+    router.refresh();
+  }
+
+  async function handleDeleteTrip() {
+    if (!tripPendingDelete || deletingTripId === tripPendingDelete.id) {
+      return;
+    }
+
+    setDeletingTripId(tripPendingDelete.id);
+    const response = await fetch(`/api/trips/${tripPendingDelete.id}`, {
+      method: "DELETE",
+    });
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    setDeletingTripId(null);
+
+    if (!response.ok) {
+      toast.error(body?.error ?? "Unable to delete trip.");
+      return;
+    }
+
+    setTripPendingDelete(null);
+    setOpen(false);
+    toast.success("Trip deleted.");
     router.refresh();
   }
 
@@ -257,11 +285,29 @@ export function MobileHeader({
                           trip.id === activeTripId && "bg-secondary/70 text-foreground"
                         )}
                       >
-                        <div className="min-w-0">
-                          <p className="truncate text-[0.95rem] font-medium">{trip.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {trip.id === activeTripId ? "Current trip" : trip.accessRole}
-                          </p>
+                        <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-[0.95rem] font-medium">{trip.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {trip.id === activeTripId ? "Current trip" : trip.accessRole}
+                            </p>
+                          </div>
+                          {trip.accessRole === "owner" ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="shrink-0 text-slate-500 hover:text-red-600"
+                              title={`Delete ${trip.name}`}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setTripPendingDelete({ id: trip.id, name: trip.name });
+                              }}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          ) : null}
                         </div>
                       </DropdownMenuItem>
                     ))}
@@ -406,6 +452,42 @@ export function MobileHeader({
               {renamingTrip ? "Saving..." : "Save Name"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(tripPendingDelete)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && deletingTripId === null) {
+            setTripPendingDelete(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete trip?</DialogTitle>
+            <DialogDescription>
+              {tripPendingDelete
+                ? `This will permanently delete "${tripPendingDelete.name}" and all of its trip data.`
+                : "This will permanently delete this trip and all of its data."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setTripPendingDelete(null)}
+              disabled={deletingTripId !== null}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleDeleteTrip()}
+              disabled={deletingTripId !== null}
+            >
+              {deletingTripId !== null ? "Deleting..." : "Delete Trip"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

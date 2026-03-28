@@ -36,8 +36,7 @@ async function seed() {
 
   await createTrip({
     user: demoUser,
-    name: "Southwest Road Trip",
-    importTemplate: true,
+    name: "Demo Trip",
   });
 
   console.log("Seed complete.");

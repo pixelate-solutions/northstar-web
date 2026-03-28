@@ -3,7 +3,9 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { trips } from "@/db/schema";
+import { getCurrentAppUser } from "@/lib/auth";
 import { requireRouteTripContext } from "@/lib/route-auth";
+import { deleteTripForUser } from "@/lib/trips";
 
 function revalidateAppPaths() {
   revalidatePath("/app", "layout");
@@ -88,4 +90,31 @@ export async function PATCH(
 
   revalidateAppPaths();
   return NextResponse.json(updatedTrip);
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const appUser = await getCurrentAppUser();
+  if (!appUser) {
+    return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const tripId = Number(id);
+  if (!Number.isFinite(tripId)) {
+    return NextResponse.json({ error: "Invalid trip id." }, { status: 400 });
+  }
+
+  const result = await deleteTripForUser(appUser.id, tripId);
+  if (!result?.deletedTrip) {
+    return NextResponse.json({ error: "Only the trip owner can delete this trip." }, { status: 403 });
+  }
+
+  revalidateAppPaths();
+  return NextResponse.json({
+    success: true,
+    nextActiveTripId: result.nextActiveTripId,
+  });
 }
