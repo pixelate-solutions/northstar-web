@@ -648,42 +648,42 @@ export async function updateTripDates(tripId: number, startDate: string, totalDa
     orderBy: [asc(days.dayNumber), asc(days.date)],
   });
 
-  await db.transaction(async (tx) => {
-    for (const [index, day] of existingDays.entries()) {
-      await tx
-        .update(days)
-        .set({ date: format(addDays(new Date("2100-01-01T12:00:00"), index), "yyyy-MM-dd") })
-        .where(eq(days.id, day.id));
-    }
+  for (const [index, day] of existingDays.entries()) {
+    await db
+      .update(days)
+      .set({
+        date: format(addDays(new Date("2100-01-01T12:00:00"), index), "yyyy-MM-dd"),
+      })
+      .where(eq(days.id, day.id));
+  }
 
-    for (const [index, day] of existingDays.slice(0, totalDays).entries()) {
-      await tx
-        .update(days)
-        .set({
-          date: targetDates[index],
-          dayNumber: index + 1,
-        })
-        .where(eq(days.id, day.id));
-    }
-
-    for (const day of existingDays.slice(totalDays)) {
-      await tx.delete(days).where(eq(days.id, day.id));
-    }
-
-    for (let index = existingDays.length; index < totalDays; index += 1) {
-      await tx.insert(days).values({
-        tripId,
+  for (const [index, day] of existingDays.slice(0, totalDays).entries()) {
+    await db
+      .update(days)
+      .set({
         date: targetDates[index],
         dayNumber: index + 1,
-        title: `Day ${index + 1}`,
-        location: "",
-        sleepLocation: null,
-        driveInfo: null,
-        notes: null,
-        coverImageUrl: null,
-      });
-    }
-  });
+      })
+      .where(eq(days.id, day.id));
+  }
+
+  for (const day of existingDays.slice(totalDays)) {
+    await db.delete(days).where(eq(days.id, day.id));
+  }
+
+  for (let index = existingDays.length; index < totalDays; index += 1) {
+    await db.insert(days).values({
+      tripId,
+      date: targetDates[index],
+      dayNumber: index + 1,
+      title: `Day ${index + 1}`,
+      location: "",
+      sleepLocation: null,
+      driveInfo: null,
+      notes: null,
+      coverImageUrl: null,
+    });
+  }
 
   await db
     .update(trips)

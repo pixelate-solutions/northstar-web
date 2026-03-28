@@ -1,18 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { DayPicker } from "react-day-picker";
-import { format } from "date-fns";
+import * as React from "react";
 import { CalendarIcon } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-import "react-day-picker/style.css";
-
 interface DatePickerProps {
-  value: string; // YYYY-MM-DD
-  onChange: (value: string) => void;
+  value?: string;
+  onChange: (value: string | "") => void;
   placeholder?: string;
   id?: string;
   className?: string;
@@ -25,83 +23,73 @@ export function DatePicker({
   id,
   className,
 }: DatePickerProps) {
-  const [open, setOpen] = useState(false);
-  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({});
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-
-  const selected = value ? new Date(`${value}T00:00:00`) : undefined;
-
-  function computePopoverStyle() {
-    if (!buttonRef.current) return;
-    const rect = buttonRef.current.getBoundingClientRect();
-    const popoverHeight = 340;
-    const spaceBelow = window.innerHeight - rect.bottom - 8;
-    const top =
-      spaceBelow >= popoverHeight ? rect.bottom + 4 : rect.top - popoverHeight - 4;
-    setPopoverStyle({ top, left: rect.left, minWidth: rect.width });
-  }
-
-  function handleToggle() {
-    if (!open) computePopoverStyle();
-    setOpen((prev) => !prev);
-  }
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      const target = e.target as Node;
-      if (
-        buttonRef.current?.contains(target) ||
-        popoverRef.current?.contains(target)
-      )
-        return;
-      setOpen(false);
-    }
-    if (open) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [open]);
+  const date = React.useMemo(() => (value ? parseISODate(value) : undefined), [value]);
+  const [open, setOpen] = React.useState(false);
+  const currentYear = React.useMemo(() => new Date().getFullYear(), []);
+  const selectedYear = date?.getFullYear() ?? currentYear;
+  const fromYear = Math.min(selectedYear, 2000);
+  const toYear = Math.max(selectedYear + 5, currentYear + 5);
 
   return (
-    <div className="relative">
-      <button
-        ref={buttonRef}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
         id={id}
-        type="button"
-        onClick={handleToggle}
-        className={cn(
-          "flex h-8 w-full items-center gap-2 rounded-lg border border-input bg-input/30 px-3 text-left text-sm transition hover:bg-secondary/50",
-          !selected && "text-muted-foreground",
-          className
-        )}
+        render={
+          <Button
+            variant="outline"
+            className={cn(
+              "w-full justify-start rounded-lg text-left font-normal shadow-none",
+              !date && "text-muted-foreground",
+              className
+            )}
+          />
+        }
       >
-        <CalendarIcon className="size-4 shrink-0 opacity-50" />
-        {selected ? format(selected, "MMM d, yyyy") : placeholder}
-      </button>
-
-      {open &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <div
-            ref={popoverRef}
-            style={{ position: "fixed", zIndex: 9999, ...popoverStyle }}
-            className="rounded-2xl border border-border/70 bg-card p-3 shadow-[0_8px_32px_rgba(100,116,180,0.14)]"
-          >
-            <DayPicker
-              mode="single"
-              selected={selected}
-              onSelect={(date) => {
-                onChange(date ? format(date, "yyyy-MM-dd") : "");
-                setOpen(false);
-              }}
-              styles={{
-                root: { fontFamily: "inherit", fontSize: "0.875rem" },
-              }}
-            />
-          </div>,
-          document.body
-        )}
-    </div>
+        <CalendarIcon className="size-4" />
+        {date
+          ? date.toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          : placeholder}
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0">
+        <Calendar
+          mode="single"
+          selected={date}
+          defaultMonth={date}
+          fromYear={fromYear}
+          toYear={toYear}
+          initialFocus
+          onSelect={(selectedDate) => {
+            setOpen(false);
+            if (!selectedDate || Number.isNaN(+selectedDate)) {
+              onChange("");
+              return;
+            }
+            onChange(toISODate(selectedDate));
+          }}
+        />
+      </PopoverContent>
+    </Popover>
   );
+}
+
+function parseISODate(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year ?? 0, (month || 1) - 1, day || 1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function toISODate(date: Date): string {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+
+  const year = normalized.getFullYear();
+  const month = String(normalized.getMonth() + 1).padStart(2, "0");
+  const day = String(normalized.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
