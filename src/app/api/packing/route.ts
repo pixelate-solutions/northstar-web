@@ -1,10 +1,13 @@
 import { revalidatePath } from "next/cache";
 import { asc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { packingItems } from "@/db/schema";
 import { requireRouteTripContext } from "@/lib/route-auth";
 import { packingItemSchema } from "@/lib/validation";
+
+type PackingItemPayload = z.infer<typeof packingItemSchema>;
 
 function revalidatePacking() {
   revalidatePath("/app", "layout");
@@ -32,7 +35,31 @@ export async function POST(request: Request) {
     return context.error;
   }
 
-  const payload = packingItemSchema.parse(await request.json());
+  let payload: PackingItemPayload;
+  try {
+    payload = packingItemSchema.parse(await request.json());
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Invalid packing item payload.", details: error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    throw error;
+  }
+
+  if (payload.daySpecific !== null) {
+    const ownedDay = await context.db.query.days.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, payload.daySpecific), eq(table.tripId, context.activeTrip.id)),
+    });
+
+    if (!ownedDay) {
+      return NextResponse.json({ error: "Target day not found." }, { status: 404 });
+    }
+  }
+
   const [created] = await context.db
     .insert(packingItems)
     .values({

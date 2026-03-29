@@ -167,6 +167,11 @@ export default function NorthstarLanding() {
         .nav-link-footer { font-size: 13px; color: #94a3b8; text-decoration: none; font-weight: 500; transition: color 0.15s; }
         .nav-link-footer:hover { color: #1e293b; }
 
+        .two-col > *, .three-col > *, .four-col > *,
+        .preview-card, .promo-strip, .section-shell, .pricing-card, .cta-shell, .footer-shell {
+          min-width: 0;
+        }
+
         @keyframes floatIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
         .float-in { animation: floatIn 0.6s cubic-bezier(0.22,1,0.36,1) both; }
         .d1 { animation-delay: 0.05s; }
@@ -178,6 +183,36 @@ export default function NorthstarLanding() {
           .four-col { grid-template-columns: 1fr 1fr !important; }
           .hide-sm { display: none !important; }
           .hero-h1 { font-size: 38px !important; }
+          .header-shell { padding: 10px 12px 10px 16px !important; }
+          .section-shell, .cta-shell { padding: 36px 24px !important; }
+          .preview-card { padding: 18px !important; }
+          .preview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .promo-strip { padding: 24px !important; }
+          .promo-strip-cards { width: 100%; flex-wrap: wrap; }
+          .promo-strip-cards > * { flex: 1 1 140px; min-width: 0; }
+          .pricing-card { padding: 32px 24px !important; }
+          .benefit-grid { grid-template-columns: 1fr !important; }
+          .footer-shell { justify-content: flex-start !important; }
+        }
+
+        @media (max-width: 560px) {
+          .four-col { grid-template-columns: 1fr !important; }
+          .hero-h1 { font-size: 32px !important; }
+          .btn-dark, .btn-soft { width: 100%; justify-content: center; }
+          .section-eyebrow { max-width: 100%; }
+          .preview-heading { gap: 12px !important; }
+          .preview-heading, .preview-next {
+            flex-direction: column;
+            align-items: flex-start !important;
+          }
+          .preview-day-row {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            overflow-x: visible !important;
+          }
+          .day-pill { width: 100%; min-width: 0; padding: 10px 12px; }
+          .step-card, .feature-card, .faq-card, .stat-card { padding-left: 20px; padding-right: 20px; }
+          .footer-brand { flex-wrap: wrap; }
         }
       `}</style>
 
@@ -188,7 +223,7 @@ export default function NorthstarLanding() {
 
       {/* NAV */}
       <header style={{ position: "sticky", top: 12, zIndex: 100, margin: "12px 16px 0" }}>
-        <div style={{
+        <div className="header-shell" style={{
           maxWidth: 1100, margin: "0 auto",
           background: scrolled ? "rgba(255,255,255,0.88)" : "rgba(255,255,255,0.72)",
           backdropFilter: "blur(20px)",
@@ -253,8 +288,8 @@ export default function NorthstarLanding() {
               padding: 6,
               boxShadow: "0 24px 80px rgba(0,0,0,0.1), 0 0 0 1px rgba(255,255,255,0.5) inset",
             }}>
-              <div style={{ background: "linear-gradient(150deg, #fff8ee 0%, #fdfeff 50%, #f0fbf6 100%)", borderRadius: 28, padding: 24 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
+              <div className="preview-card" style={{ background: "linear-gradient(150deg, #fff8ee 0%, #fdfeff 50%, #f0fbf6 100%)", borderRadius: 28, padding: 24 }}>
+                <div className="preview-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 }}>
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 6 }}>WORKSPACE</div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.03em" }}>Southwest Road Trip</div>
@@ -270,7 +305,7 @@ export default function NorthstarLanding() {
                   <span className="badge" style={{ background: "#fff8ec", color: "#f5a623", border: "1px solid #ffe8bc" }}>🔔 3 due soon</span>
                 </div>
 
-                <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 18 }}>
+                <div className="preview-day-row" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 18 }}>
                   {PREVIEW_DAYS.map((d, i) => (
                     <button key={i} className={`day-pill ${activeDay === i ? "active" : ""}`} onClick={() => setActiveDay(i)}>
                       <span style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>{d.label}</span>
@@ -279,7 +314,7 @@ export default function NorthstarLanding() {
                   ))}
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+                <div className="preview-stats" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
                   {STATS.map((s) => (
                     <div key={s.val} className="stat-card" style={{ background: s.bg, borderColor: s.border }}>
                       <div style={{ fontSize: 16, marginBottom: 6 }}>{s.icon}</div>
@@ -294,7 +329,7 @@ export default function NorthstarLanding() {
                   background: PREVIEW_DAYS[activeDay].color,
                   transition: "background 0.3s ease",
                 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div className="preview-next" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 5 }}>NEXT UP</div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{PREVIEW_DAYS[activeDay].title}</div>
@@ -327,12 +362,12 @@ export default function NorthstarLanding() {
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 14, background: "#1e293b", borderRadius: 24, padding: "32px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 20, boxShadow: "0 16px 48px rgba(30,41,59,0.22)" }}>
+        <div className="promo-strip" style={{ marginTop: 14, background: "#1e293b", borderRadius: 24, padding: "32px 40px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 20, boxShadow: "0 16px 48px rgba(30,41,59,0.22)" }}>
           <div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700, marginBottom: 8 }}>Why it works</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em" }}>One workspace. Fewer tabs. Better trips.</div>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div className="promo-strip-cards" style={{ display: "flex", gap: 10 }}>
             {[["Days","Mapped clearly","#fff8ec"],["Costs","In context","#edf7ff"],["Reminders","When needed","#edfbf3"]].map(([l,t,bg]) => (
               <div key={l} style={{ background: bg, borderRadius: 16, padding: "14px 18px", minWidth: 100 }}>
                 <div style={{ fontSize: 14, fontWeight: 800, color: "#1e293b" }}>{l}</div>
@@ -345,7 +380,7 @@ export default function NorthstarLanding() {
 
       {/* HOW IT WORKS */}
       <section id="flow" style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 20px 60px", position: "relative", zIndex: 1 }}>
-        <div style={{ background: "linear-gradient(145deg, #eaf4ff 0%, #fdfff5 50%, #fff5ea 100%)", borderRadius: 32, padding: "52px 48px", border: "1.5px solid #e8f0ff" }}>
+        <div className="section-shell" style={{ background: "linear-gradient(145deg, #eaf4ff 0%, #fdfff5 50%, #fff5ea 100%)", borderRadius: 32, padding: "52px 48px", border: "1.5px solid #e8f0ff" }}>
           <div style={{ marginBottom: 40 }}>
             <div className="section-eyebrow" style={{ marginBottom: 16 }}>⚡ How It Works</div>
             <h2 style={{ fontSize: 36, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.03em", lineHeight: 1.1 }}>From rough idea to finished itinerary.</h2>
@@ -365,7 +400,7 @@ export default function NorthstarLanding() {
       {/* PRICING */}
       <section id="pricing" style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 20px 60px", position: "relative", zIndex: 1 }}>
         <div className="two-col" style={{ display: "grid", gridTemplateColumns: "0.9fr 1.1fr", gap: 14 }}>
-          <div style={{ background: "linear-gradient(145deg, #fff4de 0%, #ffe8d0 50%, #fffdf9 100%)", borderRadius: 28, padding: "44px 40px", border: "1.5px solid #ffe8bc" }}>
+          <div className="pricing-card" style={{ background: "linear-gradient(145deg, #fff4de 0%, #ffe8d0 50%, #fffdf9 100%)", borderRadius: 28, padding: "44px 40px", border: "1.5px solid #ffe8bc" }}>
             <div className="section-eyebrow" style={{ marginBottom: 20 }}>💸 Pricing</div>
             <div style={{ fontSize: 60, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.04em", lineHeight: 1 }}>$49</div>
             <div style={{ fontSize: 14, color: "#94a3b8", marginTop: 6, marginBottom: 20, fontWeight: 600 }}>one-time · lifetime access</div>
@@ -374,9 +409,9 @@ export default function NorthstarLanding() {
             </p>
             <a href="/start" className="btn-dark">Get Lifetime Access →</a>
           </div>
-          <div className="card" style={{ padding: "44px 40px" }}>
+          <div className="card pricing-card" style={{ padding: "44px 40px" }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#64748b", marginBottom: 24 }}>Everything in the core workspace</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 28 }}>
+            <div className="benefit-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 28 }}>
               {["AI trip concierge","Day-by-day planner","Budget & packing help","Reservation sync","Notes & reminders","Booking assistance"].map((item) => (
                 <div key={item} style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", background: "#f8fafc", borderRadius: 12, fontSize: 13, fontWeight: 500, color: "#475569", border: "1px solid #f1f5f9" }}>
                   <span style={{ color: "#1fb87a", fontSize: 14 }}>✓</span> {item}
@@ -408,7 +443,7 @@ export default function NorthstarLanding() {
 
       {/* CTA */}
       <section style={{ maxWidth: 1100, margin: "0 auto", padding: "20px 20px 80px", position: "relative", zIndex: 1 }}>
-        <div style={{
+        <div className="cta-shell" style={{
           borderRadius: 32, padding: "60px 52px",
           background: "linear-gradient(135deg, #1e293b 0%, #1e4060 45%, #0f3d2e 100%)",
           display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -437,8 +472,8 @@ export default function NorthstarLanding() {
       </section>
 
       {/* Footer */}
-      <footer style={{ borderTop: "1px solid #e2e8f0", padding: "24px 20px", maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, position: "relative", zIndex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <footer className="footer-shell" style={{ borderTop: "1px solid #e2e8f0", padding: "24px 20px", maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, position: "relative", zIndex: 1 }}>
+        <div className="footer-brand" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 26, height: 26, borderRadius: "50%", background: "linear-gradient(135deg, #f5a623, #e8554e)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>✦</div>
           <span style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>Northstar</span>
           <span style={{ fontSize: 13, color: "#94a3b8" }}>— clean travel planning, finally.</span>

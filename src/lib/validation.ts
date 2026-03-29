@@ -39,7 +39,9 @@ export const packingItemSchema = z.object({
   isEssential: z.boolean().default(false),
   daySpecific: z
     .union([z.string(), z.number(), z.null(), z.undefined()])
-    .transform((value) => (value === "" || value === undefined ? null : Number(value))),
+    .transform((value) =>
+      value === "" || value === undefined || value === null ? null : Number(value)
+    ),
   notes: z.string().optional().or(z.literal("")),
 });
 
@@ -62,7 +64,9 @@ export const reminderSchema = z.object({
   priority: z.enum(["high", "medium", "low"]).default("medium"),
   dayId: z
     .union([z.string(), z.number(), z.null(), z.undefined()])
-    .transform((value) => (value === "" || value === undefined ? null : Number(value))),
+    .transform((value) =>
+      value === "" || value === undefined || value === null ? null : Number(value)
+    ),
 });
 
 export const locationSchema = z.object({
