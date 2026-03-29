@@ -12,6 +12,7 @@ interface CountdownBannerProps {
   dueSoonCount?: number;
   reminders?: Reminder[];
   tripDates?: string[];
+  timeZone?: string;
 }
 
 function getDueDateLabel(dueDate: string): { label: string; overdue: boolean } {
@@ -62,9 +63,10 @@ export function CountdownBanner({
   dueSoonCount = 0,
   reminders = [],
   tripDates,
+  timeZone,
 }: CountdownBannerProps) {
   const dates = getActiveTripDates(tripDates);
-  const status = getTripStatus(new Date(), dates);
+  const status = getTripStatus(new Date(), dates, { timeZone });
   const overdueReminders = reminders.filter((reminder) =>
     reminder.dueDate ? isReminderOverdue(reminder.dueDate) : false
   );

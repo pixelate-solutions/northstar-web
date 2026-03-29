@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { WeatherChip } from "@/components/shared/WeatherChip";
 import { Button } from "@/components/ui/button";
 import type { Reminder } from "@/db/schema";
+import { useCurrentTimeZone } from "@/hooks/useCurrentTimeZone";
 import { getDashboardStats } from "@/lib/dashboard";
 import type { AppDataBundle } from "@/lib/types";
 import { formatDateShort } from "@/lib/utils";
@@ -62,14 +63,16 @@ export function DashboardClient({
   databaseWarning,
 }: DashboardClientProps) {
   const router = useRouter();
+  const timeZone = useCurrentTimeZone();
   const [selectedDate, setSelectedDate] = useState(defaultDate);
 
   const selectedDay =
     bundle.days.find((day) => day.date === selectedDate) ?? bundle.days[0];
   const selectedDayIndex = bundle.days.findIndex((day) => day.date === selectedDate);
+  const tripDates = useMemo(() => bundle.days.map((day) => day.date), [bundle.days]);
   const stats = useMemo(
-    () => getDashboardStats(bundle, selectedDate),
-    [bundle, selectedDate]
+    () => getDashboardStats(bundle, selectedDate, timeZone),
+    [bundle, selectedDate, timeZone]
   );
   const actionableReminders = useMemo(
     () => getActionableReminders(bundle.reminders),
@@ -103,7 +106,8 @@ export function DashboardClient({
         overdueCount={reminderCounts.overdue}
         dueSoonCount={reminderCounts.dueSoon}
         reminders={actionableReminders}
-        tripDates={bundle.days.map((day) => day.date)}
+        tripDates={tripDates}
+        timeZone={timeZone}
       />
       <div className="sm:hidden">
         <Link href={`/app/days/${selectedDay.date}`}>

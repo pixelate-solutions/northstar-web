@@ -3,9 +3,10 @@ import { getTripStatus } from "@/lib/trip-data";
 
 export function getDashboardStats(
   bundle: AppDataBundle,
-  selectedDate: string
+  selectedDate: string,
+  timeZone?: string
 ): DashboardStats {
-  const status = getTripStatus(new Date(), bundle.days.map((day) => day.date));
+  const status = getTripStatus(new Date(), bundle.days.map((day) => day.date), { timeZone });
   const packingPercent = bundle.packingItems.length
     ? Math.round(
         (bundle.packingItems.filter((item) => item.isPacked).length /

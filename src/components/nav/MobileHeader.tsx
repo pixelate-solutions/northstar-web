@@ -26,8 +26,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { useCurrentTimeZone } from "@/hooks/useCurrentTimeZone";
 import { primaryNavItems } from "@/lib/navigation";
 import { product } from "@/lib/product";
+import { getCountdownLabel } from "@/lib/trip-data";
 import { cn } from "@/lib/utils";
 
 interface MobileHeaderProps {
@@ -37,6 +39,7 @@ interface MobileHeaderProps {
   canManageTripUsers: boolean;
   countdownLabel: string;
   daysHref: string;
+  tripDates: string[];
   tripName: string;
   trips: Array<{ id: number; name: string; accessRole: "owner" | "collaborator" | "viewer" }>;
 }
@@ -48,11 +51,13 @@ export function MobileHeader({
   canManageTripUsers,
   countdownLabel,
   daysHref,
+  tripDates,
   tripName,
   trips,
 }: MobileHeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const timeZone = useCurrentTimeZone();
   const [open, setOpen] = useState(false);
   const [switchingTrip, setSwitchingTrip] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -67,6 +72,9 @@ export function MobileHeader({
   const [deletingTripId, setDeletingTripId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState(tripName);
   const [renamingTrip, setRenamingTrip] = useState(false);
+  const resolvedCountdownLabel = timeZone
+    ? getCountdownLabel(tripDates, new Date(), { timeZone })
+    : countdownLabel;
   const defaultTripName = `New Trip ${trips.length + 1}`;
 
   useEffect(() => {
@@ -248,7 +256,9 @@ export function MobileHeader({
               {product.name}
             </p>
             <h2 className="mt-1 text-xl font-bold tracking-tight">{tripName}</h2>
-            <p className="text-sm text-muted-foreground">{countdownLabel} · {activeTripRole}</p>
+            <p className="text-sm text-muted-foreground">
+              {resolvedCountdownLabel} · {activeTripRole}
+            </p>
 
             <div className="mt-4 flex items-stretch gap-2">
               <DropdownMenu>

@@ -67,6 +67,7 @@ export default async function AppLayout({
     bundle.days.map((day) => day.date),
     new Date()
   );
+  const tripDates = bundle.days.map((day) => day.date);
 
   const totalBooked = bundle.expenses.reduce(
     (sum, expense) => sum + Number(expense.amount ?? 0),
@@ -95,6 +96,7 @@ export default async function AppLayout({
           canManageTripUsers={canManageTripUsers}
           countdownLabel={countdownLabel}
           daysHref={daysHref}
+          tripDates={tripDates}
           tripName={activeTrip.name}
           trips={allTrips.map((trip) => ({
             id: trip.id,
@@ -118,6 +120,7 @@ export default async function AppLayout({
             packingPercent={packingPercent}
             totalBooked={totalBooked}
             countdownLabel={countdownLabel}
+            tripDates={tripDates}
           />
           <div className="min-w-0 flex-1 lg:rounded-[2.75rem] lg:border lg:border-white/50 lg:bg-white/28 lg:p-2 lg:shadow-[0_32px_110px_rgba(17,46,72,0.14),inset_0_1px_0_rgba(255,255,255,0.75)] lg:backdrop-blur-2xl">
             <main className="min-w-0 [overflow-x:clip] px-4 pb-8 pt-16 sm:px-6 lg:px-8 lg:pb-8 lg:pt-6">

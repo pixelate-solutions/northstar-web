@@ -3,36 +3,70 @@ export type TripStatus =
   | { status: "during"; dayNumber: number; currentDate: string }
   | { status: "after" };
 
+interface TripStatusOptions {
+  timeZone?: string;
+}
+
 export function getActiveTripDates(tripDates?: string[]) {
   const dates = [...(tripDates ?? [])].filter(Boolean).sort((a, b) => a.localeCompare(b));
   return dates;
 }
 
+function getDateFormatter(timeZone?: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function getDateStringInTimeZone(date: Date, timeZone?: string) {
+  const parts = getDateFormatter(timeZone).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    return date.toISOString().slice(0, 10);
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function getUtcDayTimestamp(date: string) {
+  const [year, month, day] = date.split("-").map((value) => Number.parseInt(value, 10));
+  return Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1);
+}
+
+function diffCalendarDays(startDate: string, endDate: string) {
+  return Math.round((getUtcDayTimestamp(endDate) - getUtcDayTimestamp(startDate)) / 86400000);
+}
+
 export function getTripStatus(
   now = new Date(),
-  tripDates?: string[]
+  tripDates?: string[],
+  options: TripStatusOptions = {}
 ): TripStatus {
   const dates = getActiveTripDates(tripDates);
   if (!dates.length) {
     return { status: "after" };
   }
 
-  const start = new Date(`${dates[0]}T00:00:00`);
-  const end = new Date(`${dates[dates.length - 1]}T23:59:59`);
-  const startMs = start.getTime();
-  const endMs = end.getTime();
-  const nowMs = now.getTime();
+  const today = getDateStringInTimeZone(now, options.timeZone);
+  const startDate = dates[0];
+  const endDate = dates[dates.length - 1];
 
-  if (nowMs < startMs) {
-    const daysUntil = Math.ceil((startMs - nowMs) / (1000 * 60 * 60 * 24));
+  if (today < startDate) {
+    const daysUntil = diffCalendarDays(today, startDate);
     return { status: "before", daysUntil };
   }
 
-  if (nowMs > endMs) {
+  if (today > endDate) {
     return { status: "after" };
   }
 
-  const dayNumber = Math.floor((nowMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
+  const dayNumber = diffCalendarDays(startDate, today) + 1;
   const currentDate = dates[dayNumber - 1] ?? dates[0];
   return { status: "during", dayNumber, currentDate };
 }
@@ -50,14 +84,15 @@ export function getDefaultDate(tripDates?: string[]): string {
 
 export function getCountdownLabel(
   tripDates?: string[],
-  now = new Date()
+  now = new Date(),
+  options: TripStatusOptions = {}
 ): string {
   const dates = getActiveTripDates(tripDates);
   if (!dates.length) {
     return "Build your next trip";
   }
 
-  const status = getTripStatus(now, dates);
+  const status = getTripStatus(now, dates, options);
 
   if (status.status === "before") {
     return `${status.daysUntil} days until departure`;

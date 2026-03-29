@@ -41,8 +41,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useCurrentTimeZone } from "@/hooks/useCurrentTimeZone";
 import { primaryNavItems } from "@/lib/navigation";
 import { product } from "@/lib/product";
+import { getCountdownLabel } from "@/lib/trip-data";
 import { cn, formatCurrency } from "@/lib/utils";
 
 interface SidebarProps {
@@ -54,6 +56,7 @@ interface SidebarProps {
   daysHref: string;
   packingPercent: number;
   totalBooked: number;
+  tripDates: string[];
   tripName: string;
   trips: Array<{ id: number; name: string; accessRole: "owner" | "collaborator" | "viewer" }>;
 }
@@ -67,12 +70,14 @@ export function Sidebar({
   daysHref,
   packingPercent,
   totalBooked,
+  tripDates,
   tripName,
   trips,
 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { collapsed, toggleSidebar } = useSidebar();
+  const timeZone = useCurrentTimeZone();
   const [switchingTrip, setSwitchingTrip] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createTripName, setCreateTripName] = useState("");
@@ -87,6 +92,9 @@ export function Sidebar({
   const [renameValue, setRenameValue] = useState(tripName);
   const [renamingTrip, setRenamingTrip] = useState(false);
   const bookedLabel = formatBookedAmount(totalBooked, collapsed);
+  const resolvedCountdownLabel = timeZone
+    ? getCountdownLabel(tripDates, new Date(), { timeZone })
+    : countdownLabel;
   const clerkReady = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
   const defaultTripName = `New Trip ${trips.length + 1}`;
 
@@ -225,7 +233,7 @@ export function Sidebar({
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-foreground">{tripName}</p>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {countdownLabel} · {activeTripRole}
+                      {resolvedCountdownLabel} · {activeTripRole}
                     </p>
                   </div>
                   <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
