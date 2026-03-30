@@ -60,10 +60,11 @@ export async function PUT(
     throw error;
   }
 
-  if (payload.daySpecific !== undefined && payload.daySpecific !== null) {
+  const nextDayId = payload.daySpecific;
+  if (typeof nextDayId === "number") {
     const ownedDay = await context.db.query.days.findFirst({
       where: (table, { and, eq }) =>
-        and(eq(table.id, payload.daySpecific), eq(table.tripId, context.activeTrip.id)),
+        and(eq(table.id, nextDayId), eq(table.tripId, context.activeTrip.id)),
     });
 
     if (!ownedDay) {

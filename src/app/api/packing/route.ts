@@ -49,10 +49,11 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  if (payload.daySpecific !== null) {
+  const daySpecific = payload.daySpecific;
+  if (typeof daySpecific === "number") {
     const ownedDay = await context.db.query.days.findFirst({
       where: (table, { and, eq }) =>
-        and(eq(table.id, payload.daySpecific), eq(table.tripId, context.activeTrip.id)),
+        and(eq(table.id, daySpecific), eq(table.tripId, context.activeTrip.id)),
     });
 
     if (!ownedDay) {
