@@ -6,6 +6,7 @@ import { ArrowRight, ImageUp, Map, Save, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import { WeatherChip } from "@/components/shared/WeatherChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -300,6 +301,9 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                   <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
                     {day.locationCount} locations
                   </Badge>
+                  {day.location ? (
+                    <WeatherChip location={day.location} date={day.date} />
+                  ) : null}
                 </div>
 
                 <CardTitle className="min-w-0 text-xl break-words">

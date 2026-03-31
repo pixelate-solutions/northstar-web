@@ -128,7 +128,6 @@ export default async function DayDetailPage({
                 <ChevronRight className="size-4" />
               </Button>
             )}
-            <WeatherChip location={day.location} date={day.date} />
           </div>
         }
       />
@@ -140,6 +139,7 @@ export default async function DayDetailPage({
               <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
                 {formatDate(day.date)}
               </Badge>
+              <WeatherChip location={day.location} date={day.date} />
               <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
                 {day.sleepLocation ?? "Sleep TBD"}
               </Badge>
