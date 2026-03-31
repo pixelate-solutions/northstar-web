@@ -162,7 +162,7 @@ export function DashboardClient({
         <div className="min-w-0 space-y-6">
           <TodaySnapshot day={selectedDay} />
           <div className="flex items-center gap-3">
-            <WeatherChip location={selectedDay.location} />
+            <WeatherChip location={selectedDay.location} date={selectedDay.date} />
           </div>
         </div>
 
