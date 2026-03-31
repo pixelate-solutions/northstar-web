@@ -63,14 +63,22 @@ export function WeatherChip({
   const [state, setState] = useState<{
     key: string;
     data: WeatherResponse | null;
+    status: "loading" | "ready" | "error";
   }>(() => ({
     key: getCacheKey(location, date),
     data: getCachedWeather(location, date),
+    status: getCachedWeather(location, date) ? "ready" : "loading",
   }));
 
   const cacheKey = useMemo(() => getCacheKey(location, date), [location, date]);
   const cachedWeather = getCachedWeather(location, date);
   const weather = state.key === cacheKey ? state.data ?? cachedWeather : cachedWeather;
+  const status =
+    weather
+      ? "ready"
+      : state.key === cacheKey && state.status === "error"
+        ? "error"
+        : "loading";
 
   useEffect(() => {
     if (cachedWeather) {
@@ -82,22 +90,54 @@ export function WeatherChip({
     fetch(`/api/weather?location=${encodeURIComponent(location)}&date=${encodeURIComponent(date)}`)
       .then((response) => response.json())
       .then((data: WeatherResponse) => {
-        if (ignore || data.disabled) return;
-        setState({ key: cacheKey, data });
+        if (ignore) return;
+        if (data.disabled) {
+          setState({ key: cacheKey, data: null, status: "error" });
+          return;
+        }
+
+        setState({ key: cacheKey, data, status: "ready" });
         window.localStorage.setItem(
           cacheKey,
           JSON.stringify({ timestamp: Date.now(), data })
         );
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!ignore) {
+          setState({ key: cacheKey, data: null, status: "error" });
+        }
+      });
 
     return () => {
       ignore = true;
     };
   }, [cacheKey, cachedWeather, date, location]);
 
-  if (!weather || weather.disabled || weather.high === undefined || weather.low === undefined) {
-    return null;
+  if (status !== "ready" || !weather || weather.disabled || weather.high === undefined || weather.low === undefined) {
+    const fallbackLabel =
+      status === "loading" ? "Loading weather..." : "Weather unavailable";
+    const fallbackTooltip =
+      status === "loading"
+        ? `Loading weather for ${formatWeatherDateLabel(date)}`
+        : `Weather unavailable for ${formatWeatherDateLabel(date)}`;
+
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex">
+                <Badge className="gap-1 border border-border/70 bg-secondary/70 px-3 py-1 text-xs text-foreground hover:cursor-help">
+                  <CloudSun className="size-3.5 text-primary" />
+                  {fallbackLabel}
+                </Badge>
+              </span>
+            }
+          />
+          <TooltipContent side="bottom">{fallbackTooltip}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
   }
 
   const sourceDate = weather.sourceDate ?? date;
