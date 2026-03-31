@@ -5,6 +5,16 @@ import { requireRouteTripContext } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
 
+function createAbortError() {
+  const error = new Error("The operation was aborted.");
+  error.name = "AbortError";
+  return error;
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 function chunkText(text: string, size = 120) {
   const chunks: string[] = [];
   for (let index = 0; index < text.length; index += size) {
@@ -32,11 +42,31 @@ export async function POST(request: Request) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const assertNotAborted = () => {
+        if (request.signal.aborted) {
+          throw createAbortError();
+        }
+      };
+
       const write = (data: Record<string, unknown>) => {
+        assertNotAborted();
         controller.enqueue(encoder.encode(`${JSON.stringify(data)}\n`));
       };
 
+      const closeStream = () => {
+        try {
+          controller.close();
+        } catch {}
+      };
+
+      const handleAbort = () => {
+        closeStream();
+      };
+
+      request.signal.addEventListener("abort", handleAbort, { once: true });
+
       try {
+        assertNotAborted();
         write({ type: "status", value: "thinking" });
 
         const result = await runAiTurn({
@@ -44,8 +74,10 @@ export async function POST(request: Request) {
           activeTrip: context.activeTrip,
           conversationId: payload?.conversationId ?? null,
           message,
+          signal: request.signal,
         });
 
+        assertNotAborted();
         const conversation = toConversationSummary(result.conversation);
         const finalMessage = toMessagePayload(result.message);
 
@@ -72,12 +104,15 @@ export async function POST(request: Request) {
 
         write({ type: "done", messageId: finalMessage.id });
       } catch (error) {
-        write({
-          type: "error",
-          error: error instanceof Error ? error.message : "Unable to process AI chat.",
-        });
+        if (!isAbortError(error) && !request.signal.aborted) {
+          write({
+            type: "error",
+            error: error instanceof Error ? error.message : "Unable to process AI chat.",
+          });
+        }
       } finally {
-        controller.close();
+        request.signal.removeEventListener("abort", handleAbort);
+        closeStream();
       }
     },
   });

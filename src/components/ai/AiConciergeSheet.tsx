@@ -432,6 +432,7 @@ export function AiConciergeSheet({
     useState<AiConversationSummary | null>(null);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [undoingMessageId, setUndoingMessageId] = useState<number | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -450,6 +451,12 @@ export function AiConciergeSheet({
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const textarea = inputRef.current;
@@ -496,6 +503,7 @@ export function AiConciergeSheet({
   }
 
   async function loadHistory(conversationId: number) {
+    abortActiveResponse();
     setActiveConversationId(conversationId);
     const response = await fetch(`/api/ai/history/${conversationId}`, {
       cache: "no-store",
@@ -510,10 +518,36 @@ export function AiConciergeSheet({
   }
 
   function resetDraft() {
+    abortActiveResponse();
     setActiveConversationId(null);
     setMessages([]);
     setShowHistory(false);
     setInput("");
+  }
+
+  function finalizePendingAssistantMessage(stoppedMessage: string) {
+    setMessages((current) =>
+      current.map((message) =>
+        message.pending && message.role === "assistant"
+          ? {
+              ...message,
+              content: message.content.trim() ? message.content : stoppedMessage,
+              followups: [],
+              pending: false,
+            }
+          : message
+      )
+    );
+  }
+
+  function abortActiveResponse() {
+    const controller = abortControllerRef.current;
+    if (!controller) return;
+
+    abortControllerRef.current = null;
+    controller.abort();
+    finalizePendingAssistantMessage("Response stopped.");
+    setIsLoading(false);
   }
 
   async function handleApproval(approvalId: number, approved: boolean, externalUrl?: string | null) {
@@ -631,6 +665,7 @@ export function AiConciergeSheet({
   async function handleSend(nextMessage?: string) {
     const content = (nextMessage ?? input).trim();
     if (!content || isLoading) return;
+    const abortController = new AbortController();
 
     const optimisticUser: StreamMessage = {
       id: Date.now(),
@@ -644,12 +679,14 @@ export function AiConciergeSheet({
     setMessages((current) => [...current, optimisticUser]);
     setInput("");
     setIsLoading(true);
+    abortControllerRef.current = abortController;
     let shouldRefreshRoute = false;
 
     try {
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortController.signal,
         body: JSON.stringify({
           message: content,
           conversationId: activeConversationId,
@@ -803,8 +840,19 @@ export function AiConciergeSheet({
         }
       }
     } catch (error) {
+      if (
+        abortController.signal.aborted ||
+        (error instanceof Error && error.name === "AbortError")
+      ) {
+        finalizePendingAssistantMessage("Response stopped.");
+        return;
+      }
+
       toast.error(error instanceof Error ? error.message : "Unable to process AI response.");
     } finally {
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
       setIsLoading(false);
     }
   }
@@ -871,10 +919,17 @@ export function AiConciergeSheet({
                   variant="ghost"
                   onClick={() => setShowHistory((current) => !current)}
                   title="History"
+                  disabled={isLoading}
                 >
                   <History className="size-4" />
                 </Button>
-                <Button size="icon-sm" variant="ghost" onClick={resetDraft} title="New chat">
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  onClick={resetDraft}
+                  title="New chat"
+                  disabled={isLoading}
+                >
                   <Plus className="size-4" />
                 </Button>
                 {!isSmallScreen ? (
@@ -946,6 +1001,7 @@ export function AiConciergeSheet({
                         variant="ghost"
                         className="mt-0.5 shrink-0 text-slate-500 hover:text-red-600"
                         title="Delete conversation"
+                        disabled={isLoading}
                         onClick={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
@@ -1114,11 +1170,19 @@ export function AiConciergeSheet({
               />
               <Button
                 className="h-12 rounded-full px-4"
-                disabled={isLoading || !input.trim()}
-                onClick={() => void handleSend()}
+                variant={isLoading ? "destructive" : "default"}
+                disabled={!isLoading && !input.trim()}
+                onClick={() => {
+                  if (isLoading) {
+                    abortActiveResponse();
+                    return;
+                  }
+
+                  void handleSend();
+                }}
               >
-                <Send className="size-4" />
-                Send
+                {isLoading ? <X className="size-4" /> : <Send className="size-4" />}
+                {isLoading ? "Stop" : "Send"}
               </Button>
             </div>
           </div>

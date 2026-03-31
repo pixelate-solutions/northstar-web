@@ -76,6 +76,18 @@ const PACKING_CATEGORY_VALUES = [
 const eventCategorySchema = z.enum(EVENT_CATEGORY_VALUES);
 const nullableEventCategorySchema = z.union([eventCategorySchema, z.null()]).transform((value) => value);
 
+function createAbortError() {
+  const error = new Error("The operation was aborted.");
+  error.name = "AbortError";
+  return error;
+}
+
+function assertNotAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
 function revalidateTripViews() {
   revalidatePath("/app", "layout");
   revalidatePath("/app/calendar");
@@ -2951,26 +2963,30 @@ async function callAiModel(input: {
   tripContext: AiTripContext;
   googleConnected: boolean;
   currentMessage: string;
+  signal?: AbortSignal;
 }) {
   return createOpenAiResponse({
-    model: MODEL,
-    instructions: buildSystemPrompt({
-      tripContext: input.tripContext,
-      googleConnected: input.googleConnected,
-    }),
-    input: buildUserInput(input.history, input.currentMessage),
-    tools: [
-      {
-        type: "web_search",
-        user_location: {
-          type: "approximate",
-          country: "US",
-          region: "Michigan",
-          city: "Detroit",
+    body: {
+      model: MODEL,
+      instructions: buildSystemPrompt({
+        tripContext: input.tripContext,
+        googleConnected: input.googleConnected,
+      }),
+      input: buildUserInput(input.history, input.currentMessage),
+      tools: [
+        {
+          type: "web_search",
+          user_location: {
+            type: "approximate",
+            country: "US",
+            region: "Michigan",
+            city: "Detroit",
+          },
         },
-      },
-      ...toolDefinitions,
-    ],
+        ...toolDefinitions,
+      ],
+    },
+    signal: input.signal,
   });
 }
 
@@ -2979,6 +2995,7 @@ export async function runAiTurn(input: {
   activeTrip: Trip;
   conversationId?: number | null;
   message: string;
+  signal?: AbortSignal;
 }) {
   const db = requireDb();
 
@@ -3017,15 +3034,18 @@ export async function runAiTurn(input: {
     };
   }
 
+  assertNotAborted(input.signal);
   let tripContext = await buildAiTripContext(db, input.activeTrip.id, input.appUser.id);
   const googleConnected = Boolean(await getConnectedAccount(db, input.appUser.id, "google"));
   const history = await listAiMessages(db, conversation.id);
+  assertNotAborted(input.signal);
 
   let response = await callAiModel({
     history,
     tripContext,
     googleConnected,
     currentMessage: input.message,
+    signal: input.signal,
   });
 
   const cards: AiCard[] = [];
@@ -3035,6 +3055,7 @@ export async function runAiTurn(input: {
   let hasUndoableChanges = false;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    assertNotAborted(input.signal);
     const functionCalls = getFunctionCalls(response);
     if (!functionCalls.length) {
       break;
@@ -3043,6 +3064,7 @@ export async function runAiTurn(input: {
     const outputs = [];
 
     for (const call of functionCalls) {
+      assertNotAborted(input.signal);
       const toolName = call.name as keyof typeof toolValidators;
       if (!(toolName in toolValidators)) {
         outputs.push(buildFunctionCallOutput(call.call_id, { error: `Unknown tool ${call.name}` }));
@@ -3079,6 +3101,7 @@ export async function runAiTurn(input: {
           toolName !== "get_trip_snapshot" &&
           toolName !== "estimate_route"
         ) {
+          assertNotAborted(input.signal);
           tripContext = await buildAiTripContext(db, input.activeTrip.id, input.appUser.id);
         }
       } catch (error) {
@@ -3090,25 +3113,30 @@ export async function runAiTurn(input: {
       }
     }
 
+    assertNotAborted(input.signal);
     response = await createOpenAiResponse({
-      model: MODEL,
-      previous_response_id: response.id,
-      input: outputs,
-      tools: [
-        {
-          type: "web_search",
-          user_location: {
-            type: "approximate",
-            country: "US",
-            region: "Michigan",
-            city: "Detroit",
+      body: {
+        model: MODEL,
+        previous_response_id: response.id,
+        input: outputs,
+        tools: [
+          {
+            type: "web_search",
+            user_location: {
+              type: "approximate",
+              country: "US",
+              region: "Michigan",
+              city: "Detroit",
+            },
           },
-        },
-        ...toolDefinitions,
-      ],
+          ...toolDefinitions,
+        ],
+      },
+      signal: input.signal,
     });
   }
 
+  assertNotAborted(input.signal);
   let finalText = getResponseText(response);
   if (!finalText) {
     finalText = toolSummaries.length

@@ -31,7 +31,10 @@ export function isOpenAiConfigured() {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
 }
 
-export async function createOpenAiResponse(body: Record<string, unknown>): Promise<ResponsesApiResponse> {
+export async function createOpenAiResponse(input: {
+  body: Record<string, unknown>;
+  signal?: AbortSignal;
+}): Promise<ResponsesApiResponse> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is required for Northstar AI.");
@@ -43,8 +46,9 @@ export async function createOpenAiResponse(body: Record<string, unknown>): Promi
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(input.body),
     cache: "no-store",
+    signal: input.signal,
   });
 
   if (!response.ok) {
