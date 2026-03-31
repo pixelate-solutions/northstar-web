@@ -149,6 +149,18 @@ function formatDateLabel(dateStr: string): string {
   }
 }
 
+function parseCostValue(raw: string | null | undefined): number | null {
+  const cleaned = String(raw ?? "").trim().replace(/[$,]/g, "");
+  if (!cleaned) return null;
+
+  const value = Number(cleaned);
+  if (!Number.isFinite(value) || value < 0) {
+    return null;
+  }
+
+  return value;
+}
+
 // ─── Address autocomplete (Nominatim / OpenStreetMap) ─────────────────────────
 
 interface NominatimResult {
@@ -306,6 +318,12 @@ const formSchema = z.object({
   lat: z.string().optional(),
   lng: z.string().optional(),
   tip: z.string().optional(),
+  cost: z
+    .string()
+    .optional()
+    .refine((value) => value === undefined || value.trim() === "" || parseCostValue(value) !== null, {
+      message: "Enter a valid non-negative amount",
+    }),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -323,6 +341,7 @@ function getEventFormDefaults(event?: Event | null): FormValues {
     lat: event?.lat ?? "",
     lng: event?.lng ?? "",
     tip: event?.tip ?? "",
+    cost: event?.cost ?? "",
   };
 }
 
@@ -363,6 +382,7 @@ export function EventModal({
   async function onSubmit(data: FormValues) {
     const normalizedStartTime = normalizeTimeValue(data.startTime);
     const normalizedEndTime = normalizeTimeValue(data.endTime);
+    const parsedCost = parseCostValue(data.cost);
 
     if (!normalizedStartTime || !normalizedEndTime) {
       if (!normalizedStartTime) {
@@ -394,7 +414,7 @@ export function EventModal({
       lat: locationMode === "coords" ? (data.lat ?? null) : (usingGeocode ? geocodedCoords.lat : null),
       lng: locationMode === "coords" ? (data.lng ?? null) : (usingGeocode ? geocodedCoords.lng : null),
       tip: data.tip ?? "",
-      cost: event?.cost ?? "",
+      cost: parsedCost,
       isBooked: event?.isBooked ?? false,
       sortOrder: event?.sortOrder ?? nextSortOrder,
     };
@@ -610,6 +630,24 @@ export function EventModal({
                 <Input placeholder="Longitude" {...form.register("lng")} />
               </div>
             )}
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="ev-cost">Cost</Label>
+            <Input
+              id="ev-cost"
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              placeholder="0.00"
+              {...form.register("cost")}
+            />
+            {form.formState.errors.cost ? (
+              <p className="text-xs text-destructive">
+                {form.formState.errors.cost.message}
+              </p>
+            ) : null}
           </div>
 
           <div className="grid gap-2">
