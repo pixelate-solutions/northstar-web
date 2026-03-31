@@ -60,10 +60,20 @@ export function EventCard({
         </div>
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-2">
+              <h3 className="min-w-0 text-base font-semibold break-words [overflow-wrap:anywhere]">
+                {event.title}
+              </h3>
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base font-semibold">{event.title}</h3>
                 <EventCategoryBadge category={event.category} />
+                {event.location ? (
+                  <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/70 bg-secondary/70 px-2.5 py-1 text-xs font-medium leading-tight text-foreground">
+                    <MapPin className="size-3.5 shrink-0 text-primary" />
+                    <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                      {event.location}
+                    </span>
+                  </span>
+                ) : null}
                 {active ? (
                   <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-700">
                     Happening now
@@ -117,12 +127,6 @@ export function EventCard({
           </div>
 
           <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-            {event.location ? (
-              <span className="inline-flex items-center gap-2">
-                <MapPin className="size-4 text-primary" />
-                {event.location}
-              </span>
-            ) : null}
             {event.cost ? (
               <span className="inline-flex items-center gap-2">
                 <ReceiptText className="size-4 text-primary" />

@@ -231,7 +231,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
   }
 
   return (
-    <div className="min-w-0 space-y-6">
+    <div className="min-w-0 w-full space-y-6 overflow-x-hidden">
       <Card className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-2">
@@ -250,7 +250,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
             </Link>
           </div>
         </CardHeader>
-        <CardContent className="grid min-w-0 gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
+        <CardContent className="grid grid-cols-1 min-w-0 gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
           <div className="min-w-0 space-y-2">
             <Label htmlFor="trip-start-date">Trip Start Date</Label>
             <DatePicker
@@ -282,38 +282,47 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
         </CardContent>
       </Card>
 
-      <div className="grid gap-5">
+      <div className="grid grid-cols-1 gap-5">
         {days.map((day) => (
           <Card
             key={day.id}
             className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80 shadow-[0_18px_42px_rgba(191,102,62,0.05)]"
           >
             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 space-y-2">
+              <div className="min-w-0 flex-1 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge className="bg-secondary/70 text-foreground">Day {day.dayNumber}</Badge>
-                  <Badge className="bg-secondary/70 text-foreground">
+                  <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
+                    Day {day.dayNumber}
+                  </Badge>
+                  <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
                     {day.eventCount} events
                   </Badge>
-                  <Badge className="bg-secondary/70 text-foreground">
+                  <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
                     {day.locationCount} locations
                   </Badge>
                 </div>
-                <CardTitle className="text-xl">{day.title || `Day ${day.dayNumber}`}</CardTitle>
-                <p className="text-sm text-muted-foreground">
+
+                <CardTitle className="min-w-0 text-xl break-words [overflow-wrap:anywhere]">
+                  {day.title || `Day ${day.dayNumber}`}
+                </CardTitle>
+
+                <p className="min-w-0 text-sm text-muted-foreground break-words [overflow-wrap:anywhere]">
                   Use the quick editor here, then jump into the detailed day page for
                   schedule and location work.
                 </p>
               </div>
-              <Link href={`/app/days/${day.sourceDate}`} className="w-full sm:w-auto">
-                <Button variant="outline" className="w-full sm:w-auto">
-                  Open Day Detail
-                  <ArrowRight className="size-4" />
-                </Button>
-              </Link>
+
+              <div className="min-w-0 w-full shrink-0 sm:w-auto sm:shrink">
+                <Link href={`/app/days/${day.sourceDate}`} className="block min-w-0 w-full sm:w-auto">
+                  <Button variant="outline" className="flex w-full min-w-0 max-w-full sm:w-auto">
+                    <span className="min-w-0 truncate sm:whitespace-nowrap">Open Day Detail</span>
+                    <ArrowRight className="size-4 shrink-0" />
+                  </Button>
+                </Link>
+              </div>
             </CardHeader>
             <CardContent className="min-w-0 space-y-5">
-              <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <div className="min-w-0 space-y-2">
                   <Label htmlFor={`date-${day.id}`}>Date</Label>
                   <DatePicker
@@ -378,19 +387,27 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                 />
               </div>
 
-              <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+              <div className="grid grid-cols-1 min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
                 <div className="min-w-0 space-y-2">
                   <Label htmlFor={`cover-upload-${day.id}`}>Upload Cover Image</Label>
                   <Input
                     id={`cover-upload-${day.id}`}
                     type="file"
                     accept="image/*"
-                    onChange={(event) =>
-                      void handleCoverUpload(day.id, event.target.files?.[0] ?? null)
-                    }
-                    className="h-auto py-2"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      event.target.value = "";
+                      void handleCoverUpload(day.id, file);
+                    }}
+                    className="sr-only"
                     disabled={!canEdit}
                   />
+                  <Label
+                    htmlFor={`cover-upload-${day.id}`}
+                    className="flex w-full cursor-pointer items-center justify-center rounded-full border border-white/50 bg-white/50 px-4 py-3 text-center text-sm font-medium text-foreground shadow-[0_10px_24px_rgba(120,126,182,0.10)] transition hover:bg-white/65"
+                  >
+                    {uploadingDayId === day.id ? "Processing image..." : "Choose Image"}
+                  </Label>
                   <p className="text-xs text-muted-foreground">
                     Upload an image or paste a URL above.
                   </p>
@@ -424,9 +441,6 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                       </div>
                     )}
                   </div>
-                  {uploadingDayId === day.id ? (
-                    <p className="text-xs text-muted-foreground">Processing image...</p>
-                  ) : null}
                 </div>
               </div>
 

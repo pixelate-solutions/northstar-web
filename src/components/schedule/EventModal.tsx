@@ -425,7 +425,7 @@ export function EventModal({
   }) ?? "";
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md bg-card p-4 sm:p-7 max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="max-w-md bg-card p-4 sm:p-7 max-h-[90dvh] overflow-y-auto ">
         <DialogHeader>
           <DialogTitle>{event ? "Edit Event" : "Add Event"}</DialogTitle>
           {date ? (

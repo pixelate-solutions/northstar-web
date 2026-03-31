@@ -89,7 +89,7 @@ export default async function DayDetailPage({
   const canEdit = (context.activeTripRole ?? trip.accessRole) !== "viewer";
 
   return (
-    <div className="space-y-6">
+    <div className="w-full min-w-0 space-y-6 overflow-x-hidden">
       <PageHeader
         eyebrow={`Day ${day.dayNumber}`}
         title={day.title}
@@ -133,16 +133,20 @@ export default async function DayDetailPage({
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-[1.45fr_0.85fr]">
-        <div className="space-y-6">
-          <div className="rounded-[2rem] border border-border/70 bg-card/80 p-6">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[1.45fr_0.85fr]">
+        <div className="min-w-0 space-y-6">
+          <div className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80 p-6">
             <div className="flex flex-wrap gap-2">
-              <Badge className="bg-secondary/70 text-foreground">{formatDate(day.date)}</Badge>
-              <Badge className="bg-secondary/70 text-foreground">
+              <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
+                {formatDate(day.date)}
+              </Badge>
+              <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
                 {day.sleepLocation ?? "Sleep TBD"}
               </Badge>
               {day.driveInfo ? (
-                <Badge className="bg-secondary/70 text-foreground">{day.driveInfo}</Badge>
+                <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
+                  {day.driveInfo}
+                </Badge>
               ) : null}
             </div>
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
@@ -179,8 +183,8 @@ export default async function DayDetailPage({
           />
         </div>
 
-        <div className="space-y-6">
-          <Card className="rounded-[2rem] border border-border/70 bg-card/80">
+        <div className="min-w-0 space-y-6">
+          <Card className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80">
             <CardHeader>
               <CardTitle>Food Highlights</CardTitle>
             </CardHeader>
@@ -189,17 +193,19 @@ export default async function DayDetailPage({
                 foodEvents.map((event) => (
                   <div
                     key={event.id}
-                    className="rounded-2xl border border-border/60 bg-secondary/40 p-4"
+                    className="min-w-0 rounded-2xl border border-border/60 bg-secondary/40 p-4"
                   >
-                    <p className="inline-flex items-center gap-2 text-sm font-medium">
-                      <UtensilsCrossed className="size-4 text-primary" />
+                    <p className="inline-flex min-w-0 items-center gap-2 break-words text-sm font-medium">
+                      <UtensilsCrossed className="size-4 shrink-0 text-primary" />
                       {event.title}
                     </p>
                     <p className="mt-2 text-sm text-muted-foreground">
                       {formatTimeRange(event.startTime, event.endTime)}
                     </p>
                     {event.location ? (
-                      <p className="mt-1 text-sm text-muted-foreground">{event.location}</p>
+                      <p className="mt-1 break-words text-sm text-muted-foreground">
+                        {event.location}
+                      </p>
                     ) : null}
                   </div>
                 ))
@@ -211,12 +217,12 @@ export default async function DayDetailPage({
             </CardContent>
           </Card>
 
-          <Card className="rounded-[2rem] border border-border/70 bg-card/80">
+          <Card className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80">
             <CardHeader>
               <CardTitle>Drive Summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <p className="text-muted-foreground">
+              <p className="break-words text-muted-foreground">
                 {day.driveInfo ?? "No drive summary is available for this day."}
               </p>
               <Link
@@ -230,7 +236,7 @@ export default async function DayDetailPage({
             </CardContent>
           </Card>
 
-          <Card className="rounded-[2rem] border border-border/70 bg-card/80">
+          <Card className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80">
             <CardHeader>
               <CardTitle>Notes</CardTitle>
             </CardHeader>
@@ -239,7 +245,7 @@ export default async function DayDetailPage({
             </CardContent>
           </Card>
 
-          <Card className="rounded-[2rem] border border-border/70 bg-card/80">
+          <Card className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80">
             <CardHeader>
               <CardTitle>Day Packing List</CardTitle>
             </CardHeader>
@@ -248,10 +254,10 @@ export default async function DayDetailPage({
                 dayPackingItems.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between rounded-2xl bg-secondary/40 px-4 py-3 text-sm"
+                    className="flex min-w-0 items-center justify-between rounded-2xl bg-secondary/40 px-4 py-3 text-sm"
                   >
-                    <span>{item.name}</span>
-                    <Badge className="bg-secondary text-foreground">{item.quantity}x</Badge>
+                    <span className="min-w-0 break-words">{item.name}</span>
+                    <Badge className="ml-2 shrink-0 bg-secondary text-foreground">{item.quantity}x</Badge>
                   </div>
                 ))
               ) : (
