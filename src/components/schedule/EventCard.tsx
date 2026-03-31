@@ -61,7 +61,7 @@ export function EventCard({
         <div className="min-w-0 flex-1 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 space-y-2">
-              <h3 className="min-w-0 text-base font-semibold break-words [overflow-wrap:anywhere]">
+              <h3 className="min-w-0 text-base font-semibold break-words">
                 {event.title}
               </h3>
               <div className="flex flex-wrap items-center gap-2">
@@ -69,7 +69,7 @@ export function EventCard({
                 {event.location ? (
                   <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/70 bg-secondary/70 px-2.5 py-1 text-xs font-medium leading-tight text-foreground">
                     <MapPin className="size-3.5 shrink-0 text-primary" />
-                    <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                    <span className="min-w-0 break-words">
                       {event.location}
                     </span>
                   </span>

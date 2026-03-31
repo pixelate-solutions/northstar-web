@@ -137,14 +137,14 @@ export default async function DayDetailPage({
         <div className="min-w-0 space-y-6">
           <div className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80 p-6">
             <div className="flex flex-wrap gap-2">
-              <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
+              <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
                 {formatDate(day.date)}
               </Badge>
-              <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
+              <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
                 {day.sleepLocation ?? "Sleep TBD"}
               </Badge>
               {day.driveInfo ? (
-                <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
+                <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
                   {day.driveInfo}
                 </Badge>
               ) : null}

@@ -291,22 +291,22 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
+                  <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
                     Day {day.dayNumber}
                   </Badge>
-                  <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
+                  <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
                     {day.eventCount} events
                   </Badge>
-                  <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words [overflow-wrap:anywhere]">
+                  <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
                     {day.locationCount} locations
                   </Badge>
                 </div>
 
-                <CardTitle className="min-w-0 text-xl break-words [overflow-wrap:anywhere]">
+                <CardTitle className="min-w-0 text-xl break-words">
                   {day.title || `Day ${day.dayNumber}`}
                 </CardTitle>
 
-                <p className="min-w-0 text-sm text-muted-foreground break-words [overflow-wrap:anywhere]">
+                <p className="min-w-0 text-sm text-muted-foreground break-words">
                   Use the quick editor here, then jump into the detailed day page for
                   schedule and location work.
                 </p>
