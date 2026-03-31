@@ -101,27 +101,41 @@ function summarizeWeatherCode(code?: number) {
 }
 
 async function geocodeLocation(location: string) {
-  const response = await fetch(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+  const candidates = Array.from(
+    new Set([
+      location.trim(),
       location
-    )}&count=1&language=en&format=json`,
-    { cache: "no-store" }
+        .split(",")
+        .slice(0, 2)
+        .join(",")
+        .trim(),
+      location.split(",")[0]?.trim() ?? "",
+    ].filter(Boolean))
   );
 
-  if (!response.ok) {
-    throw new Error(`Unable to geocode "${location}".`);
+  for (const candidate of candidates) {
+    const response = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+        candidate
+      )}&count=1&language=en&format=json`,
+      { cache: "no-store" }
+    );
+
+    if (!response.ok) {
+      continue;
+    }
+
+    const data = (await response.json()) as {
+      results?: Array<{ latitude: number; longitude: number }>;
+    };
+
+    const match = data.results?.[0];
+    if (match) {
+      return match;
+    }
   }
 
-  const data = (await response.json()) as {
-    results?: Array<{ latitude: number; longitude: number }>;
-  };
-
-  const match = data.results?.[0];
-  if (!match) {
-    throw new Error(`No geocoding result for "${location}".`);
-  }
-
-  return match;
+  throw new Error(`No geocoding result for "${location}".`);
 }
 
 async function loadDailyWeather(input: {
@@ -136,7 +150,7 @@ async function loadDailyWeather(input: {
       : "https://archive-api.open-meteo.com/v1/archive";
 
   const response = await fetch(
-    `${baseUrl}?latitude=${input.latitude}&longitude=${input.longitude}&daily=temperature_2m_max,temperature_2m_min,weather_code&temperature_unit=fahrenheit&timezone=auto&start_date=${input.date}&end_date=${input.date}`,
+    `${baseUrl}?latitude=${input.latitude}&longitude=${input.longitude}&daily=temperature_2m_max,temperature_2m_min,weather_code&temperature_unit=fahrenheit&timezone=auto&forecast_days=16&start_date=${input.date}&end_date=${input.date}`,
     { cache: "no-store" }
   );
 
