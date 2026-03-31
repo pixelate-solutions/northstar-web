@@ -6,53 +6,6 @@ interface WeatherResponse {
   summary?: string;
   disabled?: boolean;
   sourceDate?: string;
-  requestedDate?: string;
-  fallbackToLastYear?: boolean;
-}
-
-function isIsoDate(value: string | null): value is string {
-  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
-}
-
-function toUtcDate(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day));
-}
-
-function formatIsoDate(date: Date) {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function todayIsoDate() {
-  return formatIsoDate(new Date());
-}
-
-function diffCalendarDays(start: string, end: string) {
-  const startDate = toUtcDate(start);
-  const endDate = toUtcDate(end);
-  return Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function sameCalendarDayLastYear(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  let nextDay = day;
-
-  while (nextDay > 0) {
-    const candidate = new Date(Date.UTC(year - 1, month - 1, nextDay));
-    if (
-      candidate.getUTCFullYear() === year - 1 &&
-      candidate.getUTCMonth() === month - 1 &&
-      candidate.getUTCDate() === nextDay
-    ) {
-      return formatIsoDate(candidate);
-    }
-    nextDay -= 1;
-  }
-
-  return formatIsoDate(new Date(Date.UTC(year - 1, month - 1, 1)));
 }
 
 function summarizeWeatherCode(code?: number) {
@@ -104,11 +57,7 @@ async function geocodeLocation(location: string) {
   const candidates = Array.from(
     new Set([
       location.trim(),
-      location
-        .split(",")
-        .slice(0, 2)
-        .join(",")
-        .trim(),
+      location.split(",").slice(0, 2).join(",").trim(),
       location.split(",")[0]?.trim() ?? "",
     ].filter(Boolean))
   );
@@ -138,24 +87,14 @@ async function geocodeLocation(location: string) {
   throw new Error(`No geocoding result for "${location}".`);
 }
 
-async function loadDailyWeather(input: {
-  latitude: number;
-  longitude: number;
-  date: string;
-  mode: "forecast" | "archive";
-}) {
-  const baseUrl =
-    input.mode === "forecast"
-      ? "https://api.open-meteo.com/v1/forecast"
-      : "https://archive-api.open-meteo.com/v1/archive";
-
+async function loadTodayWeather(latitude: number, longitude: number) {
   const response = await fetch(
-    `${baseUrl}?latitude=${input.latitude}&longitude=${input.longitude}&daily=temperature_2m_max,temperature_2m_min,weather_code&temperature_unit=fahrenheit&timezone=auto&forecast_days=16&start_date=${input.date}&end_date=${input.date}`,
+    `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,weather_code&temperature_unit=fahrenheit&timezone=auto&forecast_days=1`,
     { cache: "no-store" }
   );
 
   if (!response.ok) {
-    throw new Error(`Unable to load ${input.mode} weather.`);
+    throw new Error("Unable to load forecast weather.");
   }
 
   const data = (await response.json()) as {
@@ -167,73 +106,33 @@ async function loadDailyWeather(input: {
     };
   };
 
-  const daily = data.daily;
-  const day = daily?.time?.[0];
-  const high = daily?.temperature_2m_max?.[0];
-  const low = daily?.temperature_2m_min?.[0];
-  const code = daily?.weather_code?.[0];
+  const day = data.daily?.time?.[0];
+  const high = data.daily?.temperature_2m_max?.[0];
+  const low = data.daily?.temperature_2m_min?.[0];
+  const code = data.daily?.weather_code?.[0];
 
   if (!day || high === undefined || low === undefined) {
-    throw new Error(`No ${input.mode} weather data available.`);
+    throw new Error("No forecast weather data available.");
   }
 
   return {
     high,
     low,
     summary: summarizeWeatherCode(code),
+    sourceDate: day,
   };
 }
 
 export async function GET(request: Request) {
-  const params = new URL(request.url).searchParams;
-  const location = params.get("location")?.trim() ?? "";
-  const requestedDate = params.get("date");
-
-  if (!location || !isIsoDate(requestedDate)) {
+  const location = new URL(request.url).searchParams.get("location")?.trim() ?? "";
+  if (!location) {
     return NextResponse.json({ disabled: true } satisfies WeatherResponse);
   }
 
   try {
     const geo = await geocodeLocation(location);
-    const today = todayIsoDate();
-    const dayDelta = diffCalendarDays(today, requestedDate);
-    const useForecast = dayDelta >= 0 && dayDelta <= 16;
-    const fallbackDate = sameCalendarDayLastYear(requestedDate);
-
-    if (useForecast) {
-      try {
-        const forecast = await loadDailyWeather({
-          latitude: geo.latitude,
-          longitude: geo.longitude,
-          date: requestedDate,
-          mode: "forecast",
-        });
-
-        return NextResponse.json({
-          ...forecast,
-          requestedDate,
-          sourceDate: requestedDate,
-          fallbackToLastYear: false,
-        } satisfies WeatherResponse);
-      } catch {
-        // Fall through to historical fallback.
-      }
-    }
-
-    const historicalDate = dayDelta < 0 ? requestedDate : fallbackDate;
-    const historical = await loadDailyWeather({
-      latitude: geo.latitude,
-      longitude: geo.longitude,
-      date: historicalDate,
-      mode: "archive",
-    });
-
-    return NextResponse.json({
-      ...historical,
-      requestedDate,
-      sourceDate: historicalDate,
-      fallbackToLastYear: dayDelta >= 0,
-    } satisfies WeatherResponse);
+    const weather = await loadTodayWeather(geo.latitude, geo.longitude);
+    return NextResponse.json(weather satisfies WeatherResponse);
   } catch {
     return NextResponse.json({ disabled: true } satisfies WeatherResponse);
   }

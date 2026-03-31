@@ -301,9 +301,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                   <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
                     {day.locationCount} locations
                   </Badge>
-                  {day.location ? (
-                    <WeatherChip location={day.location} date={day.date} />
-                  ) : null}
+                  {day.location ? <WeatherChip location={day.location} /> : null}
                 </div>
 
                 <CardTitle className="min-w-0 text-xl break-words">

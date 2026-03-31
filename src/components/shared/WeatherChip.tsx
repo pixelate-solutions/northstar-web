@@ -17,22 +17,20 @@ interface WeatherResponse {
   summary?: string;
   disabled?: boolean;
   sourceDate?: string;
-  requestedDate?: string;
-  fallbackToLastYear?: boolean;
 }
 
 const ONE_HOUR = 60 * 60 * 1000;
 
-function getCacheKey(location: string, date: string) {
-  return `weather:${location}:${date}`;
+function getCacheKey(location: string) {
+  return `weather:${location}`;
 }
 
-function getCachedWeather(location: string, date: string) {
+function getCachedWeather(location: string) {
   if (typeof window === "undefined") {
     return null;
   }
 
-  const cached = window.localStorage.getItem(getCacheKey(location, date));
+  const cached = window.localStorage.getItem(getCacheKey(location));
   if (!cached) {
     return null;
   }
@@ -55,23 +53,21 @@ function formatWeatherDateLabel(date: string) {
 
 export function WeatherChip({
   location,
-  date,
 }: {
   location: string;
-  date: string;
 }) {
   const [state, setState] = useState<{
     key: string;
     data: WeatherResponse | null;
     status: "loading" | "ready" | "error";
   }>(() => ({
-    key: getCacheKey(location, date),
-    data: getCachedWeather(location, date),
-    status: getCachedWeather(location, date) ? "ready" : "loading",
+    key: getCacheKey(location),
+    data: getCachedWeather(location),
+    status: getCachedWeather(location) ? "ready" : "loading",
   }));
 
-  const cacheKey = useMemo(() => getCacheKey(location, date), [location, date]);
-  const cachedWeather = getCachedWeather(location, date);
+  const cacheKey = useMemo(() => getCacheKey(location), [location]);
+  const cachedWeather = getCachedWeather(location);
   const weather = state.key === cacheKey ? state.data ?? cachedWeather : cachedWeather;
   const status =
     weather
@@ -87,7 +83,7 @@ export function WeatherChip({
 
     let ignore = false;
 
-    fetch(`/api/weather?location=${encodeURIComponent(location)}&date=${encodeURIComponent(date)}`)
+    fetch(`/api/weather?location=${encodeURIComponent(location)}`)
       .then((response) => response.json())
       .then((data: WeatherResponse) => {
         if (ignore) return;
@@ -111,15 +107,15 @@ export function WeatherChip({
     return () => {
       ignore = true;
     };
-  }, [cacheKey, cachedWeather, date, location]);
+  }, [cacheKey, cachedWeather, location]);
 
   if (status !== "ready" || !weather || weather.disabled || weather.high === undefined || weather.low === undefined) {
     const fallbackLabel =
       status === "loading" ? "Loading weather..." : "Weather unavailable";
     const fallbackTooltip =
       status === "loading"
-        ? `Loading weather for ${formatWeatherDateLabel(date)}`
-        : `Weather unavailable for ${formatWeatherDateLabel(date)}`;
+        ? "Loading today's weather"
+        : "Today's weather is unavailable";
 
     return (
       <TooltipProvider>
@@ -140,10 +136,10 @@ export function WeatherChip({
     );
   }
 
-  const sourceDate = weather.sourceDate ?? date;
-  const tooltipLabel = weather.fallbackToLastYear
-    ? `Showing weather for ${formatWeatherDateLabel(sourceDate)} (last year)`
-    : `Showing weather for ${formatWeatherDateLabel(sourceDate)}`;
+  const sourceDate = weather.sourceDate;
+  const tooltipLabel = sourceDate
+    ? `Showing weather for ${formatWeatherDateLabel(sourceDate)}`
+    : "Showing today's weather";
 
   return (
     <TooltipProvider>

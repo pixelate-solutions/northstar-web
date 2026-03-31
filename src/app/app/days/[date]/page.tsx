@@ -128,7 +128,7 @@ export default async function DayDetailPage({
                 <ChevronRight className="size-4" />
               </Button>
             )}
-            <WeatherChip location={day.location} date={day.date} />
+            <WeatherChip location={day.location} />
           </div>
         }
       />
