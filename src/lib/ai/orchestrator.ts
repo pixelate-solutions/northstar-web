@@ -290,7 +290,8 @@ const toolDefinitions = [
   {
     type: "function",
     name: "get_trip_snapshot",
-    description: "Read the current active trip context with days, events, budget, packing, and reservations.",
+    description:
+      "Read the current active trip context with days, events, budget, packing, and reservations. Use this before editing existing trip content whenever the request depends on what is currently on the site.",
     strict: true,
     parameters: {
       type: "object",
@@ -321,7 +322,8 @@ const toolDefinitions = [
   {
     type: "function",
     name: "update_day_details",
-    description: "Update the title, location, notes, logistics, or cover image for a single day in the active trip.",
+    description:
+      "Update the title, location, notes, logistics, or cover image for a single day in the active trip. Before using this for requests like rename, adjust, rewrite, or reflect the current schedule, inspect the current day state and event list first.",
     strict: true,
     parameters: {
       type: "object",
@@ -810,6 +812,9 @@ function buildSystemPrompt(input: {
     "You are Northstar AI Trip Concierge inside a trip-planning application.",
     "You are operating only on the current active trip. Never make assumptions about other trips or other users.",
     "If the user asks for information only, answer directly. If the user asks for a trip change and the request is clear, perform the internal edits autonomously with the available tools and then summarize exactly what changed.",
+    "The live trip data in this prompt is the source of truth for what the site currently shows. Prefer it over prior chat memory.",
+    "For requests to change, rename, adjust, rewrite, reflect, or sync existing trip content, inspect the current trip state first and ground your edits in what is currently on the site.",
+    "If a request depends on the current wording, current schedule, current events, or current day structure, review the relevant day in the trip context JSON and call get_trip_snapshot when helpful before making mutations.",
     "Unless the user explicitly asks for ideas only, requests for a packing list, budget, or itinerary mean they want those items implemented into the site, not just described in chat.",
     "If the user asks to apply, implement, or add a full itinerary, you must write actual timed event records to the relevant days. Updating day titles, notes, or locations alone is not sufficient.",
     "When a user provides or approves a day-by-day plan with times or clear morning/afternoon/evening structure, prefer set_day_itinerary to populate each day with events.",
@@ -839,10 +844,76 @@ function buildSystemPrompt(input: {
   ].join("\n\n");
 }
 
-function buildUserInput(history: Awaited<ReturnType<typeof listAiMessages>>, currentMessage: string) {
+function shouldGroundAgainstCurrentState(currentMessage: string) {
+  return /\b(change|update|edit|rename|adjust|revise|rewrite|reflect|sync|current|existing|now|site|website|schedule|day)\b/i.test(
+    currentMessage
+  );
+}
+
+function formatDayGroundingSummary(day: AiTripContext["days"][number]) {
+  const eventLines = day.events.slice(0, 10).map((event) => {
+    const timeLabel = [event.startTime, event.endTime].filter(Boolean).join("-");
+    const locationLabel = event.location ? ` @ ${event.location}` : "";
+    return `- ${timeLabel || "Time TBD"} · ${event.title}${locationLabel}`;
+  });
+
+  return [
+    `Day ${day.dayNumber} (${day.date})`,
+    `Current title: ${day.title}`,
+    `Current location: ${day.location}`,
+    `Current sleep location: ${day.sleepLocation ?? "None"}`,
+    `Current drive info: ${day.driveInfo ?? "None"}`,
+    `Current events (${day.events.length}):`,
+    ...(eventLines.length ? eventLines : ["- No events currently scheduled"]),
+  ].join("\n");
+}
+
+function buildCurrentStateGroundingNote(
+  tripContext: AiTripContext,
+  currentMessage: string
+) {
+  if (!shouldGroundAgainstCurrentState(currentMessage)) {
+    return "";
+  }
+
+  const matchedDays = new Map<number, AiTripContext["days"][number]>();
+  const dayNumberMatches = currentMessage.matchAll(/\bday\s+(\d{1,2})\b/gi);
+  for (const match of dayNumberMatches) {
+    const dayNumber = Number(match[1]);
+    const day = tripContext.days.find((item) => item.dayNumber === dayNumber);
+    if (day) {
+      matchedDays.set(day.id, day);
+    }
+  }
+
+  const dateMatches = currentMessage.matchAll(/\b\d{4}-\d{2}-\d{2}\b/g);
+  for (const match of dateMatches) {
+    const day = tripContext.days.find((item) => item.date === match[0]);
+    if (day) {
+      matchedDays.set(day.id, day);
+    }
+  }
+
+  const summaries = matchedDays.size
+    ? [...matchedDays.values()].map(formatDayGroundingSummary)
+    : [];
+
+  return [
+    "Use the current site state below as ground truth. Do not rely on prior chat memory when editing existing trip content.",
+    ...(summaries.length ? summaries : []),
+  ].join("\n\n");
+}
+
+function buildUserInputWithGrounding(
+  history: Awaited<ReturnType<typeof listAiMessages>>,
+  tripContext: AiTripContext,
+  currentMessage: string
+) {
   const transcript = formatHistoryTranscript(history);
+  const groundingNote = buildCurrentStateGroundingNote(tripContext, currentMessage);
   return [
     transcript ? `Conversation so far:\n${transcript}` : "",
+    groundingNote,
     `Current user request:\n${currentMessage.trim()}`,
   ]
     .filter(Boolean)
@@ -2997,7 +3068,7 @@ async function callAiModel(input: {
         tripContext: input.tripContext,
         googleConnected: input.googleConnected,
       }),
-      input: buildUserInput(input.history, input.currentMessage),
+      input: buildUserInputWithGrounding(input.history, input.tripContext, input.currentMessage),
       tools: [
         {
           type: "web_search",
