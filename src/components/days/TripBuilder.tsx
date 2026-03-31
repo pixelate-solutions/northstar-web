@@ -231,27 +231,27 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="rounded-[2rem] border border-border/70 bg-card/80">
+    <div className="min-w-0 space-y-6">
+      <Card className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <CardTitle>Days</CardTitle>
             <p className="text-sm text-muted-foreground">
               Set the trip start date, total number of days, and keep each day linked
               to its detailed schedule page.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
             <Link href="/app/calendar">
-              <Button variant="outline">
+              <Button variant="outline" className="w-full sm:w-auto">
                 <Map className="size-4" />
                 Trip
               </Button>
             </Link>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
-          <div className="space-y-2">
+        <CardContent className="grid min-w-0 gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
+          <div className="min-w-0 space-y-2">
             <Label htmlFor="trip-start-date">Trip Start Date</Label>
             <DatePicker
               id="trip-start-date"
@@ -260,7 +260,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
               disabled={!canEdit}
             />
           </div>
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <Label htmlFor="trip-total-days">Number Of Days</Label>
             <Input
               id="trip-total-days"
@@ -272,7 +272,11 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
               disabled={!canEdit}
             />
           </div>
-          <Button onClick={() => void saveTripSettings()} disabled={!canEdit || savingTrip}>
+          <Button
+            onClick={() => void saveTripSettings()}
+            disabled={!canEdit || savingTrip}
+            className="w-full md:w-auto"
+          >
             {savingTrip ? "Saving..." : "Save Days"}
           </Button>
         </CardContent>
@@ -282,10 +286,10 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
         {days.map((day) => (
           <Card
             key={day.id}
-            className="rounded-[2rem] border border-border/70 bg-card/80 shadow-[0_18px_42px_rgba(191,102,62,0.05)]"
+            className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80 shadow-[0_18px_42px_rgba(191,102,62,0.05)]"
           >
             <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-2">
+              <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge className="bg-secondary/70 text-foreground">Day {day.dayNumber}</Badge>
                   <Badge className="bg-secondary/70 text-foreground">
@@ -301,16 +305,16 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                   schedule and location work.
                 </p>
               </div>
-              <Link href={`/app/days/${day.sourceDate}`}>
-                <Button variant="outline">
+              <Link href={`/app/days/${day.sourceDate}`} className="w-full sm:w-auto">
+                <Button variant="outline" className="w-full sm:w-auto">
                   Open Day Detail
                   <ArrowRight className="size-4" />
                 </Button>
               </Link>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <div className="space-y-2">
+            <CardContent className="min-w-0 space-y-5">
+              <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="min-w-0 space-y-2">
                   <Label htmlFor={`date-${day.id}`}>Date</Label>
                   <DatePicker
                     id={`date-${day.id}`}
@@ -319,7 +323,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                     disabled={!canEdit}
                   />
                 </div>
-                <div className="space-y-2 xl:col-span-2">
+                <div className="min-w-0 space-y-2 xl:col-span-2">
                   <Label htmlFor={`title-${day.id}`}>Day Name</Label>
                   <Input
                     id={`title-${day.id}`}
@@ -329,7 +333,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                     disabled={!canEdit}
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   <Label htmlFor={`location-${day.id}`}>Location</Label>
                   <Input
                     id={`location-${day.id}`}
@@ -339,7 +343,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                     disabled={!canEdit}
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   <Label htmlFor={`sleep-${day.id}`}>Sleep Location</Label>
                   <Input
                     id={`sleep-${day.id}`}
@@ -351,7 +355,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                     disabled={!canEdit}
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   <Label htmlFor={`drive-${day.id}`}>Drive Overview</Label>
                   <Input
                     id={`drive-${day.id}`}
@@ -374,8 +378,8 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                 />
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-                <div className="space-y-2">
+              <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+                <div className="min-w-0 space-y-2">
                   <Label htmlFor={`cover-upload-${day.id}`}>Upload Cover Image</Label>
                   <Input
                     id={`cover-upload-${day.id}`}
@@ -392,7 +396,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                   </p>
                 </div>
 
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   <Label>Preview</Label>
                   <div className="overflow-hidden rounded-[1.5rem] border border-border/60 bg-secondary/30">
                     {day.coverImageUrl ? (
@@ -438,13 +442,14 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                 />
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
-                <p className="text-sm text-muted-foreground">
+              <div className="flex flex-col gap-3 border-t border-border/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="min-w-0 text-sm text-muted-foreground">
                   Saving here updates the day metadata used throughout the dashboard.
                 </p>
                 <Button
                   onClick={() => void saveDay(day)}
                   disabled={!canEdit || savingDayId === day.id}
+                  className="w-full sm:w-auto"
                 >
                   <Save className="size-4" />
                   {savingDayId === day.id ? "Saving..." : "Save Day"}
