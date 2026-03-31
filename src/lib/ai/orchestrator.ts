@@ -342,7 +342,7 @@ const toolDefinitions = [
     type: "function",
     name: "create_event",
     description:
-      "Create a new itinerary event on a specific day in the active trip using a real, specific place or tour whenever the user asked for research-backed recommendations.",
+      "Create a new itinerary event on a specific day in the active trip using a real, specific place or tour whenever the user asked for research-backed recommendations. If you do not already know the exact venue/address and coordinates, use web search first, then pass latitude and longitude with the event.",
     strict: true,
     parameters: {
       type: "object",
@@ -381,7 +381,7 @@ const toolDefinitions = [
     type: "function",
     name: "set_day_itinerary",
     description:
-      "Create or replace the timed events for a specific day when implementing a full itinerary. Use real named venues, restaurants, cafés, bakeries, attractions, and tours whenever the user asked you to research and fill out the day.",
+      "Create or replace the timed events for a specific day when implementing a full itinerary. Use real named venues, restaurants, cafés, bakeries, attractions, and tours whenever the user asked you to research and fill out the day. If you do not already know the exact venue/address and coordinates for any location-bearing event, use web search first and then pass latitude and longitude for that event.",
     strict: true,
     parameters: {
       type: "object",
@@ -429,7 +429,8 @@ const toolDefinitions = [
   {
     type: "function",
     name: "update_event",
-    description: "Update an existing event on the active trip using a known event ID.",
+    description:
+      "Update an existing event on the active trip using a known event ID. If you change or add a location and do not already know its exact coordinates, use web search first and then pass latitude and longitude.",
     strict: true,
     parameters: {
       type: "object",
@@ -815,12 +816,15 @@ function buildSystemPrompt(input: {
     "If the user asks for a full packing list, use set_packing_list to save the full list to the trip whenever possible. Do not save only a few sample items and leave the rest as prose.",
     `Use only these packing categories when adding items: ${PACKING_CATEGORY_VALUES.join(", ")}. Pick the best fit for each item instead of putting everything into one category.`,
     "If the user asks for a full budget or cost breakdown to be added, use set_budget_items to save the full set of budget items whenever possible.",
-    "When creating itinerary events, save rich event details by default: proper category, specific place name, useful description, helpful tip/notes, and coordinates for the map whenever a place can be inferred.",
+    "When creating itinerary events, save rich event details by default: proper category, specific place name, useful description, helpful tip/notes, and coordinates for the map.",
+    "If an event has a location, it must also end up with non-null latitude and longitude. Do not leave location-bearing events without coordinates.",
+    "If you do not already know a location-bearing event's exact place or coordinates, use web search before calling create_event, set_day_itinerary, or update_event.",
+    "Use web search to find the exact venue, trailhead, address, or official listing, then pass the best available latitude and longitude in the tool call.",
     "If the user asks you to find things to do, meals, cafés, bakeries, tours, or to fill out a day, use web search and implement specific named places on the first pass. Do not leave generic placeholders like 'Lunch nearby', 'Paris bakery', 'central Paris', or 'afternoon café stop' if you can reasonably identify a real option.",
     "Do not reply saying you can make it more specific later when the user already asked for implementation. Research and apply the specifics now.",
     `Use only these event categories when creating or editing events: ${EVENT_CATEGORY_VALUES.join(", ")}. Never invent new category names.`,
     "Do not create standalone location records when implementing an itinerary. The trip map should come from day events with coordinates. Only use create_location if the user explicitly asks for a separate saved map pin.",
-    "Do not ask the user for coordinates or over-clarify routine itinerary details. Make reasonable assumptions, geocode likely places automatically, and implement the events.",
+    "Do not ask the user for coordinates or over-clarify routine itinerary details. Make reasonable assumptions, use web search to identify specific places, geocode likely places automatically, and if a generic location cannot be geocoded, switch to a specific named place or address before saving the event.",
     "Ask a clarifying question only when a required detail is missing and the task cannot be completed safely without it.",
     "For recommendations, destination research, prices, restaurants, excursions, and current facts like flight information, use web search whenever freshness matters.",
     "Before changing plans that involve moving between places, use estimate_route so travel time and timezone changes are reflected in the schedule.",
@@ -1020,40 +1024,61 @@ async function inferEventCoordinates(input: {
     };
   }
 
-  const locationQuery =
-    cleanNullable(input.location) ?? `${input.title}, ${input.fallbackDayLocation}`;
+  const location = cleanNullable(input.location);
 
-  try {
-    const geocoded = await geocodePlace(locationQuery);
-    return {
-      lat: String(geocoded.lat),
-      lng: String(geocoded.lng),
-      location: cleanNullable(input.location) ?? geocoded.label,
-    };
-  } catch {
-    if (input.location) {
+  async function geocodeFirstSuccessfulQuery(queries: Array<string | null | undefined>) {
+    for (const rawQuery of queries) {
+      const query = cleanNullable(rawQuery || "");
+      if (!query) continue;
+
       try {
-        const geocoded = await geocodePlace(input.fallbackDayLocation);
-        return {
-          lat: String(geocoded.lat),
-          lng: String(geocoded.lng),
-          location: cleanNullable(input.location) ?? null,
-        };
+        return await geocodePlace(query);
       } catch {
-        return {
-          lat: null,
-          lng: null,
-          location: cleanNullable(input.location) ?? null,
-        };
+        continue;
       }
     }
 
+    return null;
+  }
+
+  if (location) {
+    const geocoded = await geocodeFirstSuccessfulQuery([
+      `${input.title}, ${location}`,
+      `${location}, ${input.fallbackDayLocation}`,
+      location,
+    ]);
+
+    if (!geocoded) {
+      throw new Error(
+        `Unable to resolve coordinates for "${location}". Use a specific named place or address.`
+      );
+    }
+
     return {
-      lat: null,
-      lng: null,
-      location: cleanNullable(input.location) ?? null,
+      lat: String(geocoded.lat),
+      lng: String(geocoded.lng),
+      location,
     };
   }
+
+  const geocoded = await geocodeFirstSuccessfulQuery([
+    `${input.title}, ${input.fallbackDayLocation}`,
+    input.fallbackDayLocation,
+  ]);
+
+  if (geocoded) {
+    return {
+      lat: String(geocoded.lat),
+      lng: String(geocoded.lng),
+      location: geocoded.label,
+    };
+  }
+
+  return {
+    lat: null,
+    lng: null,
+    location: null,
+  };
 }
 
 function normalizeTextForMatching(value: string | null | undefined) {
@@ -1951,7 +1976,7 @@ async function executeToolCall(input: {
             `Scheduled it for ${parsedArgs.startTime}-${parsedArgs.endTime}.`,
             resolvedCoordinates.location
               ? `Mapped it to ${resolvedCoordinates.location}.`
-              : "Saved it without confirmed coordinates.",
+              : "No mappable location was available for this event.",
           ]),
         ],
         undoable: true,
@@ -1969,10 +1994,6 @@ async function executeToolCall(input: {
       const previousEvents = parsedArgs.replaceExisting
         ? existingDayEvents.map(snapshotEvent)
         : [];
-
-      if (parsedArgs.replaceExisting && existingDayEvents.length) {
-        await input.db.delete(events).where(eq(events.dayId, day.id));
-      }
 
       const seenDuplicateKeys = new Set(
         parsedArgs.replaceExisting
@@ -2036,6 +2057,10 @@ async function executeToolCall(input: {
           event
         ): event is Exclude<(typeof normalizedEventsRaw)[number], null> => event !== null
       );
+
+      if (parsedArgs.replaceExisting && existingDayEvents.length) {
+        await input.db.delete(events).where(eq(events.dayId, day.id));
+      }
 
       const inserted = normalizedEvents.length
         ? await input.db.insert(events).values(normalizedEvents).returning()
