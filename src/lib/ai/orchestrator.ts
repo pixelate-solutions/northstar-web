@@ -823,6 +823,7 @@ function buildSystemPrompt(input: {
     "If the user asks for a full budget or cost breakdown to be added, use set_budget_items to save the full set of budget items whenever possible.",
     "When creating itinerary events, save rich event details by default: proper category, specific place name, useful description, helpful tip/notes, and coordinates for the map.",
     "If an event has a location, it must also end up with non-null latitude and longitude. Do not leave location-bearing events without coordinates.",
+    "For drive events, do not save the route path as the event location. Save the destination place instead.",
     "If you do not already know a location-bearing event's exact place or coordinates, use web search before calling create_event, set_day_itinerary, or update_event.",
     "Use web search to find the exact venue, trailhead, address, or official listing, then pass the best available latitude and longitude in the tool call.",
     "If the user asks you to find things to do, meals, cafés, bakeries, tours, or to fill out a day, use web search and implement specific named places on the first pass. Do not leave generic placeholders like 'Lunch nearby', 'Paris bakery', 'central Paris', or 'afternoon café stop' if you can reasonably identify a real option.",
@@ -1078,6 +1079,7 @@ function normalizePackingCategory(category: string | null | undefined, name?: st
 
 async function inferEventCoordinates(input: {
   title: string;
+  category?: string | null;
   location: string | null;
   fallbackDayLocation: string;
   latitude: number | null;
@@ -1095,7 +1097,39 @@ async function inferEventCoordinates(input: {
     };
   }
 
-  const location = cleanNullable(input.location);
+  function extractDriveDestination(value: string | null | undefined) {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) return null;
+
+    const arrowSegments = trimmed
+      .split(/\s*(?:→|->|➡|⟶)\s*/g)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    if (arrowSegments.length >= 2) {
+      return arrowSegments[arrowSegments.length - 1] ?? null;
+    }
+
+    const fromToMatch = trimmed.match(
+      /\b(?:drive|trip|route|travel|head)\b.*?\bfrom\b\s+(.+?)\s+\bto\b\s+(.+)$/i
+    );
+    if (fromToMatch?.[2]) {
+      return fromToMatch[2].trim();
+    }
+
+    const simpleToMatch = trimmed.match(/\bto\b\s+(.+)$/i);
+    if (simpleToMatch?.[1]) {
+      return simpleToMatch[1].trim();
+    }
+
+    return null;
+  }
+
+  const normalizedCategory = normalizeEventCategory(input.category);
+  const rawLocation = cleanNullable(input.location);
+  const location =
+    normalizedCategory === "drive"
+      ? extractDriveDestination(rawLocation) ?? extractDriveDestination(input.title) ?? rawLocation
+      : rawLocation;
 
   async function geocodeFirstSuccessfulQuery(queries: Array<string | null | undefined>) {
     for (const rawQuery of queries) {
@@ -1969,6 +2003,7 @@ async function executeToolCall(input: {
       });
       const resolvedCoordinates = await inferEventCoordinates({
         title: parsedArgs.title,
+        category: parsedArgs.category,
         location: cleanNullable(parsedArgs.location) ?? null,
         fallbackDayLocation: day.location,
         latitude: parsedArgs.latitude,
@@ -2085,6 +2120,7 @@ async function executeToolCall(input: {
         parsedArgs.events.map(async (event, index) => {
           const resolvedCoordinates = await inferEventCoordinates({
             title: event.title,
+            category: event.category,
             location: cleanNullable(event.location) ?? null,
             fallbackDayLocation: day.location,
             latitude: event.latitude,
@@ -2225,6 +2261,7 @@ async function executeToolCall(input: {
       if (location !== undefined) {
         const resolvedCoordinates = await inferEventCoordinates({
           title: title || event.title,
+          category: category || event.category,
           location,
           fallbackDayLocation: event.day.location,
           latitude: parsedArgs.latitude,
