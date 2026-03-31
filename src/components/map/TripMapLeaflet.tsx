@@ -428,7 +428,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   }
 
   return (
-    <div className="space-y-4 lg:grid lg:grid-cols-[0.9fr_1.4fr] lg:gap-6 lg:space-y-0">
+    <div className="space-y-4 lg:grid lg:grid-cols-[0.9fr_1.4fr] lg:items-start lg:gap-6 lg:space-y-0">
       <div className="space-y-3 lg:hidden">
         <div className="flex items-center justify-between gap-3 rounded-[1.35rem] border border-white/45 bg-white/72 px-3 py-2 shadow-[0_18px_42px_rgba(191,102,62,0.08)] backdrop-blur-xl">
           <button
@@ -728,56 +728,57 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
         </Card>
       </div>
 
-      <div className="relative overflow-clip rounded-[2rem] border border-border/70 lg:sticky lg:top-6 lg:self-start">
-        <MapContainer
-          center={route[0] ?? [36.1699, -115.1398]}
-          zoom={5}
-          scrollWheelZoom
-          className="h-[calc(100dvh-18rem)] min-h-[28rem] w-full sm:h-[32rem] lg:h-[42rem]"
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <MapFlyTo center={flyTarget.center} zoom={flyTarget.zoom} />
+      <div className="lg:sticky lg:top-6 lg:self-start">
+        <div className="relative overflow-clip rounded-[2rem] border border-border/70">
+          <MapContainer
+            center={route[0] ?? [36.1699, -115.1398]}
+            zoom={5}
+            scrollWheelZoom
+            className="h-[calc(100dvh-18rem)] min-h-[28rem] w-full sm:h-[32rem] lg:h-[42rem]"
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <MapFlyTo center={flyTarget.center} zoom={flyTarget.zoom} />
 
-          {route.length > 1 ? (
-            <Polyline positions={route} color="#f59e0b" weight={2} opacity={0.75} />
-          ) : null}
+            {route.length > 1 ? (
+              <Polyline positions={route} color="#f59e0b" weight={2} opacity={0.75} />
+            ) : null}
 
-          {drivingRoute?.positions.length ? (
-            <Polyline positions={drivingRoute.positions} color="#0ea5e9" weight={4} opacity={0.85} />
-          ) : null}
+            {drivingRoute?.positions.length ? (
+              <Polyline positions={drivingRoute.positions} color="#0ea5e9" weight={4} opacity={0.85} />
+            ) : null}
 
-          {filteredDays.map((day) => {
-            const hikeEventPins = day.events
-              .filter(
-                (event) =>
-                  event.category === "hike" &&
-                  event.lat !== null &&
-                  event.lng !== null
-              )
-              .map((event) => createEventPin(day, event));
-            const hikePins = hikeEventPins;
+            {filteredDays.map((day) => {
+              const hikeEventPins = day.events
+                .filter(
+                  (event) =>
+                    event.category === "hike" &&
+                    event.lat !== null &&
+                    event.lng !== null
+                )
+                .map((event) => createEventPin(day, event));
+              const hikePins = hikeEventPins;
 
-            if (hikePins.length < 2) return null;
+              if (hikePins.length < 2) return null;
 
-            const positions = hikePins.map((pin) => [pin.lat, pin.lng] as [number, number]);
-            return (
-              <Polyline
-                key={`hike-${day.id}`}
-                positions={positions}
-                color="#22c55e"
-                weight={3}
-                dashArray="9 6"
-                opacity={0.9}
-              >
-                <Popup minWidth={180} maxWidth={260}>
-                  <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
-                    Day {day.dayNumber} Hikes
-                  </p>
-                  {hikePins.map((pin, i) => (
-                    <div
+              const positions = hikePins.map((pin) => [pin.lat, pin.lng] as [number, number]);
+              return (
+                <Polyline
+                  key={`hike-${day.id}`}
+                  positions={positions}
+                  color="#22c55e"
+                  weight={3}
+                  dashArray="9 6"
+                  opacity={0.9}
+                >
+                  <Popup minWidth={180} maxWidth={260}>
+                    <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
+                      Day {day.dayNumber} Hikes
+                    </p>
+                    {hikePins.map((pin, i) => (
+                      <div
                       key={pin.id}
                       style={{ marginBottom: i < hikePins.length - 1 ? 10 : 0 }}
                     >
@@ -924,6 +925,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       <Dialog open={routePickerOpen} onOpenChange={setRoutePickerOpen}>
