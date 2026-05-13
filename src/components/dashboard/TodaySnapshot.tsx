@@ -2,6 +2,7 @@ import { BedDouble, CarFront, MapPin } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { TravelImage } from "@/components/ui/travel-image";
 import type { DaySummary, DayWithDetails } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
@@ -13,12 +14,8 @@ export function TodaySnapshot({ day }: TodaySnapshotProps) {
   return (
     <Card className="min-w-0 overflow-hidden rounded-[2rem] border border-border/70 bg-card/85">
       <div className="relative h-72 overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={
-            day.coverImageUrl ??
-            "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1200&auto=format&fit=crop"
-          }
+        <TravelImage
+          src={day.coverImageUrl}
           alt={day.title}
           className="h-full w-full object-cover"
         />

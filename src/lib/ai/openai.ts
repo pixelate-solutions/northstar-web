@@ -1,6 +1,7 @@
 import "server-only";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+const OPENAI_FILES_URL = "https://api.openai.com/v1/files";
 
 export interface ResponsesFunctionCall {
   type: "function_call";
@@ -59,6 +60,45 @@ export async function createOpenAiResponse(input: {
   }
 
   return (await response.json()) as ResponsesApiResponse;
+}
+
+export async function uploadOpenAiInputFile(input: {
+  file: File;
+  filename: string;
+  signal?: AbortSignal;
+}) {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is required for Northstar AI file uploads.");
+  }
+
+  const formData = new FormData();
+  formData.set("purpose", "user_data");
+  formData.set("file", input.file, input.filename);
+
+  const response = await fetch(OPENAI_FILES_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: formData,
+    cache: "no-store",
+    signal: input.signal,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "");
+    throw new Error(
+      `OpenAI Files API error (${response.status}): ${errorBody || response.statusText}`
+    );
+  }
+
+  return (await response.json()) as {
+    id: string;
+    filename?: string;
+    bytes?: number;
+    purpose?: string;
+  };
 }
 
 export function getFunctionCalls(response: ResponsesApiResponse) {

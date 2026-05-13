@@ -1,7 +1,7 @@
 import "server-only";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { getDb } from "@/db";
@@ -43,12 +43,23 @@ import {
 } from "@/lib/ai/openai";
 import { CATEGORIES } from "@/lib/category-config";
 import { summarizeProviderAvailability } from "@/lib/ai/providers";
-import type { AiCard, AiTripContext, ToolExecutionArtifact } from "@/lib/ai/types";
+import { updateTripDates } from "@/lib/trips";
+import type {
+  AiCard,
+  AiModelMode,
+  AiTripContext,
+  AiUploadedFile,
+  ToolExecutionArtifact,
+} from "@/lib/ai/types";
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
 
-const MODEL = "gpt-5.4-mini";
+const SMALL_MODEL = "gpt-5.4-mini";
+const LARGE_MODEL = "gpt-5.4";
 const MAX_TOOL_ROUNDS = 8;
+const LARGE_CONTEXT_MESSAGE_CHARS = 1200;
+const LARGE_CONTEXT_HISTORY_CHARS = 8000;
+const LARGE_CONTEXT_TRIP_CHARS = 50000;
 const EVENT_CATEGORY_VALUES = [
   "hike",
   "food",
@@ -145,10 +156,27 @@ const expenseInputSchema = z.object({
   notes: nullableStringSchema(),
   receiptUrl: nullableStringSchema(),
 });
+const tripDayInputSchema = z.object({
+  date: z.string(),
+  title: z.string(),
+  location: z.string(),
+  sleepLocation: nullableStringSchema(),
+  driveInfo: nullableStringSchema(),
+  notes: nullableStringSchema(),
+  coverImageUrl: nullableStringSchema(),
+});
 
 const toolValidators = {
   get_trip_snapshot: z.object({
     focus: z.string(),
+  }),
+  set_trip_structure: z.object({
+    name: nullableStringSchema(),
+    destination: nullableStringSchema(),
+    summary: nullableStringSchema(),
+    startDate: z.string(),
+    replaceExisting: z.boolean(),
+    days: z.array(tripDayInputSchema).min(1).max(60),
   }),
   update_trip_details: z.object({
     name: nullableStringSchema(),
@@ -299,6 +327,56 @@ const toolDefinitions = [
         focus: { type: "string", description: "What aspect of the trip the assistant needs to inspect." },
       },
       required: ["focus"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "set_trip_structure",
+    description:
+      "Overwrite the active trip's day structure, dates, day titles, locations, and trip details. Use this when a user asks to plan a new trip, replace a blank/default starter trip, change the trip year/duration, or build a trip from an uploaded itinerary. This can replace the existing default days; the user can undo it.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: ["string", "null"] },
+        destination: { type: ["string", "null"] },
+        summary: { type: ["string", "null"] },
+        startDate: { type: "string" },
+        replaceExisting: {
+          type: "boolean",
+          description:
+            "Use true when replacing blank/default content or when the user asks to overwrite the trip.",
+        },
+        days: {
+          type: "array",
+          minItems: 1,
+          maxItems: 60,
+          items: {
+            type: "object",
+            properties: {
+              date: { type: "string" },
+              title: { type: "string" },
+              location: { type: "string" },
+              sleepLocation: { type: ["string", "null"] },
+              driveInfo: { type: ["string", "null"] },
+              notes: { type: ["string", "null"] },
+              coverImageUrl: { type: ["string", "null"] },
+            },
+            required: [
+              "date",
+              "title",
+              "location",
+              "sleepLocation",
+              "driveInfo",
+              "notes",
+              "coverImageUrl",
+            ],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["name", "destination", "summary", "startDate", "replaceExisting", "days"],
       additionalProperties: false,
     },
   },
@@ -800,8 +878,150 @@ function stringifyMaybeJson(value: string | null) {
 function formatHistoryTranscript(history: Awaited<ReturnType<typeof listAiMessages>>) {
   return history
     .slice(-12)
-    .map((message) => `${message.role === "assistant" ? "Assistant" : "User"}: ${message.content}`)
+    .map((message) => {
+      const attachments = getMessageAttachments(message.metadata);
+      const attachmentLabel = attachments.length
+        ? `\nAttached files: ${attachments.map((file) => file.filename).join(", ")}`
+        : "";
+      return `${message.role === "assistant" ? "Assistant" : "User"}: ${message.content}${attachmentLabel}`;
+    })
     .join("\n");
+}
+
+function getHistoryTranscriptLength(history: Awaited<ReturnType<typeof listAiMessages>>) {
+  return formatHistoryTranscript(history).length;
+}
+
+function getTripContextLength(tripContext: AiTripContext) {
+  return formatAiTripContext(tripContext).length;
+}
+
+function hasPlanningIntent(message: string) {
+  return /\b(plan|planning|itinerary|schedule|route|optimi[sz]e|day-by-day|multi-day|full\s+day|fill\s+out|autofill|auto-fill|recommend|recommendations|things\s+to\s+do|where\s+to\s+eat|restaurants?|cafes?|cafés?|budget|cost\s+breakdown|packing\s+list|analy[sz]e|compare|strategy|organize|build\s+(?:a|the)\s+(?:day|trip|plan)|uploaded\s+file|attachment)\b/i.test(
+    message
+  );
+}
+
+function chooseAiModel(input: {
+  currentMessage: string;
+  history: Awaited<ReturnType<typeof listAiMessages>>;
+  tripContext: AiTripContext;
+  files: AiUploadedFile[];
+  modelMode: AiModelMode;
+}) {
+  const messageLength = input.currentMessage.length;
+  const historyLength = getHistoryTranscriptLength(input.history);
+  const tripContextLength = getTripContextLength(input.tripContext);
+  const uploadedBytes = input.files.reduce((sum, file) => sum + file.bytes, 0);
+  const reasons: string[] = [];
+
+  if (input.modelMode !== "auto") {
+    return {
+      model: input.modelMode,
+      mode: input.modelMode,
+      reasons: ["manual selection"],
+      metrics: {
+        messageLength,
+        historyLength,
+        tripContextLength,
+        fileCount: input.files.length,
+        uploadedBytes,
+      },
+    };
+  }
+
+  if (input.files.length) {
+    reasons.push("file input");
+  }
+  if (uploadedBytes > 0) {
+    reasons.push("uploaded file context");
+  }
+  if (messageLength >= LARGE_CONTEXT_MESSAGE_CHARS) {
+    reasons.push("large user prompt");
+  }
+  if (historyLength >= LARGE_CONTEXT_HISTORY_CHARS) {
+    reasons.push("large conversation history");
+  }
+  if (tripContextLength >= LARGE_CONTEXT_TRIP_CHARS) {
+    reasons.push("large trip context");
+  }
+  if (hasPlanningIntent(input.currentMessage)) {
+    reasons.push("planning or analysis intent");
+  }
+
+  if (reasons.length) {
+    return {
+      model: LARGE_MODEL,
+      mode: input.modelMode,
+      reasons,
+      metrics: {
+        messageLength,
+        historyLength,
+        tripContextLength,
+        fileCount: input.files.length,
+        uploadedBytes,
+      },
+    };
+  }
+
+  return {
+    model: SMALL_MODEL,
+    mode: input.modelMode,
+    reasons: ["simple prompt"],
+    metrics: {
+      messageLength,
+      historyLength,
+      tripContextLength,
+      fileCount: input.files.length,
+      uploadedBytes,
+    },
+  };
+}
+
+function getMessageAttachments(metadata: Record<string, unknown> | null | undefined) {
+  const rawAttachments = metadata?.attachments;
+  if (!Array.isArray(rawAttachments)) {
+    return [];
+  }
+
+  const attachments: AiUploadedFile[] = [];
+  for (const item of rawAttachments) {
+    if (!item || typeof item !== "object") continue;
+    const attachment = item as Partial<AiUploadedFile>;
+    if (typeof attachment.filename !== "string") continue;
+
+    attachments.push({
+      fileId: attachment.fileId,
+      fileData: attachment.fileData,
+      filename: attachment.filename,
+      mimeType:
+        typeof attachment.mimeType === "string"
+          ? attachment.mimeType
+          : "application/octet-stream",
+      bytes: typeof attachment.bytes === "number" ? attachment.bytes : 0,
+    });
+  }
+
+  return attachments;
+}
+
+function collectConversationFiles(history: Awaited<ReturnType<typeof listAiMessages>>) {
+  const seen = new Set<string>();
+  const files: AiUploadedFile[] = [];
+
+  for (const message of [...history].reverse()) {
+    for (const file of getMessageAttachments(message.metadata)) {
+      const key = file.fileId ?? file.fileData;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      files.push(file);
+      if (files.length >= 8) {
+        return files.reverse();
+      }
+    }
+  }
+
+  return files.reverse();
 }
 
 function buildSystemPrompt(input: {
@@ -816,6 +1036,9 @@ function buildSystemPrompt(input: {
     "For requests to change, rename, adjust, rewrite, reflect, or sync existing trip content, inspect the current trip state first and ground your edits in what is currently on the site.",
     "If a request depends on the current wording, current schedule, current events, or current day structure, review the relevant day in the trip context JSON and call get_trip_snapshot when helpful before making mutations.",
     "Unless the user explicitly asks for ideas only, requests for a packing list, budget, or itinerary mean they want those items implemented into the site, not just described in chat.",
+    "When the user describes a new trip or uploads an itinerary for a blank/default starter trip, do not stop with advice or ask whether to overwrite. Use set_trip_structure to replace the current default trip dates/days, then use set_day_itinerary to populate events. The undo button is the safety mechanism.",
+    "If the user gives a trip-length range, choose a practical length that fits the stated priorities instead of asking them to choose. For a 10-14 day Europe trip with Paris, Rome, and Amalfi Coast, default to about 13 days / 12 nights unless the uploaded itinerary specifies otherwise.",
+    "If the current trip year/duration conflicts with the user's stated trip, correct it with set_trip_structure before building itinerary events.",
     "If the user asks to apply, implement, or add a full itinerary, you must write actual timed event records to the relevant days. Updating day titles, notes, or locations alone is not sufficient.",
     "When a user provides or approves a day-by-day plan with times or clear morning/afternoon/evening structure, prefer set_day_itinerary to populate each day with events.",
     "If the user asks for a full packing list, use set_packing_list to save the full list to the trip whenever possible. Do not save only a few sample items and leave the rest as prose.",
@@ -908,17 +1131,45 @@ function buildCurrentStateGroundingNote(
 function buildUserInputWithGrounding(
   history: Awaited<ReturnType<typeof listAiMessages>>,
   tripContext: AiTripContext,
-  currentMessage: string
+  currentMessage: string,
+  files: AiUploadedFile[] = []
 ) {
   const transcript = formatHistoryTranscript(history);
   const groundingNote = buildCurrentStateGroundingNote(tripContext, currentMessage);
-  return [
+  const text = [
     transcript ? `Conversation so far:\n${transcript}` : "",
     groundingNote,
+    files.length
+      ? `Files available for this turn:\n${files
+          .map((file) => `- ${file.filename} (${file.mimeType}, ${file.bytes} bytes)`)
+          .join("\n")}`
+      : "",
     `Current user request:\n${currentMessage.trim()}`,
   ]
     .filter(Boolean)
     .join("\n\n");
+
+  if (!files.length) {
+    return text;
+  }
+
+  return [
+    {
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text,
+        },
+        ...files.map((file) => ({
+          type: "input_file",
+          filename: file.filename,
+          ...(file.fileId ? { file_id: file.fileId } : {}),
+          ...(file.fileData ? { file_data: file.fileData } : {}),
+        })),
+      ],
+    },
+  ];
 }
 
 function buildMutationCard(title: string, changes: string[], description?: string | null): AiCard {
@@ -1281,11 +1532,17 @@ function snapshotTrip(trip: Trip) {
     destination: trip.destination ?? null,
     summary: trip.summary ?? null,
     coverImageUrl: trip.coverImageUrl ?? null,
+    startDate: trip.startDate ?? null,
+    endDate: trip.endDate ?? null,
   };
 }
 
 function snapshotDay(day: typeof days.$inferSelect) {
   return {
+    id: day.id,
+    tripId: day.tripId,
+    date: day.date,
+    dayNumber: day.dayNumber,
     title: day.title,
     location: day.location,
     sleepLocation: day.sleepLocation ?? null,
@@ -1297,6 +1554,7 @@ function snapshotDay(day: typeof days.$inferSelect) {
 
 function snapshotEvent(event: typeof events.$inferSelect) {
   return {
+    id: event.id,
     dayId: event.dayId,
     title: event.title,
     startTime: event.startTime ?? null,
@@ -1315,6 +1573,7 @@ function snapshotEvent(event: typeof events.$inferSelect) {
 
 function snapshotLocation(location: typeof locations.$inferSelect) {
   return {
+    id: location.id,
     dayId: location.dayId,
     name: location.name,
     lat: location.lat,
@@ -1438,6 +1697,168 @@ async function undoAiAssistantMessage(input: {
             updatedAt: new Date(),
           })
           .where(eq(trips.id, input.activeTrip.id));
+        revertedCount += 1;
+        break;
+      }
+
+      case "set_trip_structure": {
+        const previousTrip = asRecord(details?.previousTrip);
+        const previousDays = Array.isArray(details?.previousDays)
+          ? details.previousDays
+          : [];
+        if (!previousTrip || !previousDays.length) break;
+
+        await input.db.delete(days).where(eq(days.tripId, input.activeTrip.id));
+
+        const previousDayRecords = previousDays
+          .map(asRecord)
+          .filter((day): day is Record<string, unknown> => Boolean(day));
+        const dayIdMap = new Map<number, number>();
+
+        for (const previousDay of previousDayRecords) {
+          const oldDayId = Number(previousDay.id);
+          const [restoredDay] = await input.db
+            .insert(days)
+            .values({
+              id: oldDayId,
+              tripId: input.activeTrip.id,
+              date: String(previousDay.date),
+              dayNumber: Number(previousDay.dayNumber),
+              title: String(previousDay.title),
+              location: String(previousDay.location),
+              sleepLocation:
+                typeof previousDay.sleepLocation === "string" ||
+                previousDay.sleepLocation === null
+                  ? previousDay.sleepLocation
+                  : null,
+              driveInfo:
+                typeof previousDay.driveInfo === "string" || previousDay.driveInfo === null
+                  ? previousDay.driveInfo
+                  : null,
+              notes:
+                typeof previousDay.notes === "string" || previousDay.notes === null
+                  ? previousDay.notes
+                  : null,
+              coverImageUrl:
+                typeof previousDay.coverImageUrl === "string" ||
+                previousDay.coverImageUrl === null
+                  ? previousDay.coverImageUrl
+                  : null,
+            })
+            .returning();
+
+          if (restoredDay) {
+            dayIdMap.set(oldDayId, restoredDay.id);
+          }
+        }
+
+        const previousEvents = previousDayRecords.flatMap((day) =>
+          Array.isArray(day.events) ? day.events : []
+        );
+        const eventValues = previousEvents
+          .map(asRecord)
+          .filter((event): event is Record<string, unknown> => Boolean(event))
+          .flatMap((event) => {
+            const dayId = dayIdMap.get(Number(event.dayId));
+            if (!dayId) return [];
+            return {
+              id: Number(event.id),
+              dayId,
+              title: String(event.title),
+              startTime: event.startTime ? String(event.startTime) : null,
+              endTime: event.endTime ? String(event.endTime) : null,
+              category: String(event.category),
+              description:
+                typeof event.description === "string" || event.description === null
+                  ? event.description
+                  : null,
+              location:
+                typeof event.location === "string" || event.location === null
+                  ? event.location
+                  : null,
+              lat: typeof event.lat === "string" || event.lat === null ? event.lat : null,
+              lng: typeof event.lng === "string" || event.lng === null ? event.lng : null,
+              tip: typeof event.tip === "string" || event.tip === null ? event.tip : null,
+              cost: typeof event.cost === "string" || event.cost === null ? event.cost : null,
+              isBooked: typeof event.isBooked === "boolean" ? event.isBooked : false,
+              sortOrder: typeof event.sortOrder === "number" ? event.sortOrder : 0,
+            };
+          });
+
+        if (eventValues.length) {
+          await input.db.insert(events).values(eventValues);
+        }
+
+        const previousLocations = previousDayRecords.flatMap((day) =>
+          Array.isArray(day.locations) ? day.locations : []
+        );
+        const locationValues = previousLocations
+          .map(asRecord)
+          .filter((location): location is Record<string, unknown> => Boolean(location))
+          .flatMap((location) => {
+            const dayId = dayIdMap.get(Number(location.dayId));
+            if (!dayId) return [];
+            return {
+              id: Number(location.id),
+              dayId,
+              name: String(location.name),
+              lat: String(location.lat),
+              lng: String(location.lng),
+              type: String(location.type),
+              description:
+                typeof location.description === "string" || location.description === null
+                  ? location.description
+                  : null,
+              imageUrl:
+                typeof location.imageUrl === "string" || location.imageUrl === null
+                  ? location.imageUrl
+                  : null,
+              tip:
+                typeof location.tip === "string" || location.tip === null
+                  ? location.tip
+                  : null,
+              googleMapsUrl:
+                typeof location.googleMapsUrl === "string" ||
+                location.googleMapsUrl === null
+                  ? location.googleMapsUrl
+                  : null,
+            };
+          });
+
+        if (locationValues.length) {
+          await input.db.insert(locations).values(locationValues);
+        }
+
+        await input.db
+          .update(trips)
+          .set({
+            name: typeof previousTrip.name === "string" ? previousTrip.name : input.activeTrip.name,
+            destination:
+              typeof previousTrip.destination === "string" ||
+              previousTrip.destination === null
+                ? previousTrip.destination
+                : input.activeTrip.destination,
+            summary:
+              typeof previousTrip.summary === "string" || previousTrip.summary === null
+                ? previousTrip.summary
+                : input.activeTrip.summary,
+            coverImageUrl:
+              typeof previousTrip.coverImageUrl === "string" ||
+              previousTrip.coverImageUrl === null
+                ? previousTrip.coverImageUrl
+                : input.activeTrip.coverImageUrl,
+            startDate:
+              typeof previousTrip.startDate === "string" || previousTrip.startDate === null
+                ? previousTrip.startDate
+                : input.activeTrip.startDate,
+            endDate:
+              typeof previousTrip.endDate === "string" || previousTrip.endDate === null
+                ? previousTrip.endDate
+                : input.activeTrip.endDate,
+            updatedAt: new Date(),
+          })
+          .where(eq(trips.id, input.activeTrip.id));
+
         revertedCount += 1;
         break;
       }
@@ -1918,6 +2339,118 @@ async function executeToolCall(input: {
           ? [buildMutationCard("Updated trip details", changes)]
           : [],
         undoable: changes.length > 0,
+      };
+    }
+
+    case "set_trip_structure": {
+      const parsedArgs = toolValidators.set_trip_structure.parse(rawArguments);
+      const previousTrip = snapshotTrip(input.activeTrip);
+      const previousDayRows = await input.db.query.days.findMany({
+        where: eq(days.tripId, input.activeTrip.id),
+        with: {
+          events: true,
+          locations: true,
+        },
+      });
+      const previousDays = previousDayRows
+        .sort((a, b) => a.dayNumber - b.dayNumber || a.date.localeCompare(b.date))
+        .map((day) => ({
+          ...snapshotDay(day),
+          events: day.events.map(snapshotEvent),
+          locations: day.locations.map(snapshotLocation),
+        }));
+
+      const updatedDays = await updateTripDates(
+        input.activeTrip.id,
+        parsedArgs.startDate,
+        parsedArgs.days.length
+      );
+      const sortedUpdatedDays = [...updatedDays].sort(
+        (a, b) => a.dayNumber - b.dayNumber || a.date.localeCompare(b.date)
+      );
+      const updatedDayIds = sortedUpdatedDays.map((day) => day.id);
+
+      if (parsedArgs.replaceExisting && updatedDayIds.length) {
+        await input.db.delete(locations).where(inArray(locations.dayId, updatedDayIds));
+        await input.db.delete(events).where(inArray(events.dayId, updatedDayIds));
+      }
+
+      for (const [index, dayInput] of parsedArgs.days.entries()) {
+        const day = sortedUpdatedDays[index];
+        if (!day) continue;
+
+        await input.db
+          .update(days)
+          .set({
+            title: dayInput.title,
+            location: dayInput.location,
+            sleepLocation: cleanNullable(dayInput.sleepLocation) ?? null,
+            driveInfo: cleanNullable(dayInput.driveInfo) ?? null,
+            notes: cleanNullable(dayInput.notes) ?? null,
+            coverImageUrl: cleanNullable(dayInput.coverImageUrl) ?? null,
+          })
+          .where(eq(days.id, day.id));
+      }
+
+      const tripUpdates: Record<string, unknown> = {
+        updatedAt: new Date(),
+      };
+      const name = cleanNullable(parsedArgs.name);
+      const destination = cleanNullable(parsedArgs.destination);
+      const summary = cleanNullable(parsedArgs.summary);
+
+      if (name !== undefined) {
+        tripUpdates.name = name || input.activeTrip.name;
+      }
+      if (destination !== undefined) {
+        tripUpdates.destination = destination;
+      }
+      if (summary !== undefined) {
+        tripUpdates.summary = summary;
+      }
+
+      if (Object.keys(tripUpdates).length > 1) {
+        await input.db.update(trips).set(tripUpdates).where(eq(trips.id, input.activeTrip.id));
+      }
+
+      await touchTrip(input.db, input.activeTrip.id);
+      revalidateTripViews();
+
+      const changes = [
+        `Set trip to ${parsedArgs.days.length} day${parsedArgs.days.length === 1 ? "" : "s"} starting ${parsedArgs.startDate}.`,
+        parsedArgs.replaceExisting
+          ? "Cleared existing events and map pins from the rebuilt days."
+          : "Kept existing day content where possible.",
+        ...parsedArgs.days.map(
+          (day, index) => `Day ${index + 1}: ${day.title} (${day.location})`
+        ),
+      ];
+      const summaryText = `Rebuilt the trip structure with ${parsedArgs.days.length} day${parsedArgs.days.length === 1 ? "" : "s"} starting ${parsedArgs.startDate}.`;
+
+      await createAiActionLog(input.db, {
+        userId: input.appUser.id,
+        tripId: input.activeTrip.id,
+        conversationId: input.conversationId,
+        messageId: input.userMessageId,
+        actionType: "set_trip_structure",
+        summary: summaryText,
+        details: {
+          previousTrip,
+          previousDays,
+          replaceExisting: parsedArgs.replaceExisting,
+        },
+      });
+
+      return {
+        output: {
+          success: true,
+          dayCount: parsedArgs.days.length,
+          startDate: parsedArgs.startDate,
+          replaceExisting: parsedArgs.replaceExisting,
+        },
+        summary: summaryText,
+        cards: [buildMutationCard("Rebuilt trip structure", changes)],
+        undoable: true,
       };
     }
 
@@ -3096,16 +3629,23 @@ async function callAiModel(input: {
   tripContext: AiTripContext;
   googleConnected: boolean;
   currentMessage: string;
+  model: string;
+  files?: AiUploadedFile[];
   signal?: AbortSignal;
 }) {
   return createOpenAiResponse({
     body: {
-      model: MODEL,
+      model: input.model,
       instructions: buildSystemPrompt({
         tripContext: input.tripContext,
         googleConnected: input.googleConnected,
       }),
-      input: buildUserInputWithGrounding(input.history, input.tripContext, input.currentMessage),
+      input: buildUserInputWithGrounding(
+        input.history,
+        input.tripContext,
+        input.currentMessage,
+        input.files ?? []
+      ),
       tools: [
         {
           type: "web_search",
@@ -3128,6 +3668,8 @@ export async function runAiTurn(input: {
   activeTrip: Trip;
   conversationId?: number | null;
   message: string;
+  uploadedFiles?: AiUploadedFile[];
+  modelMode?: AiModelMode;
   signal?: AbortSignal;
 }) {
   const db = requireDb();
@@ -3150,6 +3692,16 @@ export async function runAiTurn(input: {
     conversationId: conversation.id,
     role: "user",
     content: input.message.trim(),
+    metadata: input.uploadedFiles?.length
+      ? {
+          attachments: input.uploadedFiles.map((file) => ({
+            fileId: file.fileId,
+            filename: file.filename,
+            mimeType: file.mimeType,
+            bytes: file.bytes,
+          })),
+        }
+      : null,
   });
 
   if (!isOpenAiConfigured()) {
@@ -3171,6 +3723,22 @@ export async function runAiTurn(input: {
   let tripContext = await buildAiTripContext(db, input.activeTrip.id, input.appUser.id);
   const googleConnected = Boolean(await getConnectedAccount(db, input.appUser.id, "google"));
   const history = await listAiMessages(db, conversation.id);
+  const currentTurnFiles = input.uploadedFiles ?? [];
+  const priorFiles = collectConversationFiles(history);
+  const seenFileKeys = new Set<string>();
+  const availableFiles = [...currentTurnFiles, ...priorFiles].filter((file) => {
+    const key = file.fileData ?? file.fileId ?? file.filename;
+    if (seenFileKeys.has(key)) return false;
+    seenFileKeys.add(key);
+    return true;
+  });
+  const modelRouting = chooseAiModel({
+    currentMessage: input.message,
+    history,
+    tripContext,
+    files: availableFiles,
+    modelMode: input.modelMode ?? "auto",
+  });
   assertNotAborted(input.signal);
 
   let response = await callAiModel({
@@ -3178,6 +3746,8 @@ export async function runAiTurn(input: {
     tripContext,
     googleConnected,
     currentMessage: input.message,
+    model: modelRouting.model,
+    files: availableFiles,
     signal: input.signal,
   });
 
@@ -3249,7 +3819,7 @@ export async function runAiTurn(input: {
     assertNotAborted(input.signal);
     response = await createOpenAiResponse({
       body: {
-        model: MODEL,
+        model: modelRouting.model,
         previous_response_id: response.id,
         input: outputs,
         tools: [
@@ -3295,6 +3865,8 @@ export async function runAiTurn(input: {
       undoable: hasUndoableChanges,
       undoApplied: false,
       usedTools: Array.from(new Set(usedTools)),
+      model: modelRouting.model,
+      modelRouting,
     },
   });
 

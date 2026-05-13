@@ -4,6 +4,7 @@ import { Clock3, GripVertical, MapPin, Pencil, ReceiptText, Sparkles, Trash2 } f
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { TravelImage } from "@/components/ui/travel-image";
 import type { Event } from "@/db/schema";
 import { EventCategoryBadge } from "@/components/schedule/EventCategoryBadge";
 import { cn, formatCurrency, formatTimeRange, isEventActive, isEventPast } from "@/lib/utils";
@@ -11,6 +12,7 @@ import { cn, formatCurrency, formatTimeRange, isEventActive, isEventPast } from 
 interface EventCardProps {
   event: Event;
   date: string;
+  imageUrl?: string | null;
   sortable?: boolean;
   dragHandleProps?: Record<string, unknown>;
   onOpen?: () => void;
@@ -21,6 +23,7 @@ interface EventCardProps {
 export function EventCard({
   event,
   date,
+  imageUrl,
   sortable = false,
   dragHandleProps,
   onOpen,
@@ -145,6 +148,15 @@ export function EventCard({
             </p>
           ) : null}
         </div>
+        {imageUrl ? (
+          <div className="hidden h-28 w-36 shrink-0 overflow-hidden rounded-[1.1rem] border border-border/70 bg-secondary/40 sm:block">
+            <TravelImage
+              src={imageUrl}
+              alt={event.title}
+              className="h-full w-full object-cover"
+            />
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

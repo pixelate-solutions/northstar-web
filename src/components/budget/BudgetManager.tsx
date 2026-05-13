@@ -54,9 +54,13 @@ function getExpenseForm(expense: Expense | null) {
 export function BudgetManager({
   initialExpenses,
   canEdit = true,
+  dayCount = 1,
+  plannedEventCost = 0,
 }: {
   initialExpenses: Expense[];
   canEdit?: boolean;
+  dayCount?: number;
+  plannedEventCost?: number;
 }) {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
@@ -71,7 +75,10 @@ export function BudgetManager({
     .filter((expense) => Boolean(expense.isPaid))
     .reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
   const remaining = totalBooked - totalPaid;
-  const estimatedFood = Number(foodEstimate || 0) * 11;
+  const safeDayCount = Math.max(dayCount, 1);
+  const estimatedFood = Number(foodEstimate || 0) * safeDayCount;
+  const projectedTotal = totalBooked + plannedEventCost + estimatedFood;
+  const averagePerDay = projectedTotal / safeDayCount;
 
   async function saveExpense(payload: Record<string, unknown>) {
     const response = await fetch(
@@ -148,6 +155,14 @@ export function BudgetManager({
               <SummaryCard label="Paid" value={formatCurrency(totalPaid)} />
               <SummaryCard label="Remaining" value={formatCurrency(remaining)} />
             </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <SummaryCard
+                label="Itinerary Costs"
+                value={formatCurrency(plannedEventCost)}
+              />
+              <SummaryCard label="Food Estimate" value={formatCurrency(estimatedFood)} />
+              <SummaryCard label="Projected Total" value={formatCurrency(projectedTotal)} />
+            </div>
             <BudgetProgress paid={totalPaid} booked={totalBooked} />
           </CardContent>
         </Card>
@@ -165,9 +180,15 @@ export function BudgetManager({
               />
             </div>
             <div className="rounded-2xl bg-secondary/40 p-4">
-              <p className="text-sm text-muted-foreground">11-day estimate</p>
+              <p className="text-sm text-muted-foreground">
+                {safeDayCount}-day estimate
+              </p>
               <p className="mt-2 text-2xl font-semibold">
                 {formatCurrency(estimatedFood)}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {formatCurrency(averagePerDay)} projected per day with booked and
+                itinerary costs.
               </p>
             </div>
           </CardContent>

@@ -1,20 +1,31 @@
 "use client";
 
-import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  type DragEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRightLeft,
   Bot,
   Check,
+  FileText,
   History,
   Loader2,
   Maximize2,
   MessageSquare,
   Minimize2,
+  Paperclip,
   Plus,
   Send,
   Sparkles,
   Trash2,
+  UploadCloud,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -41,9 +52,22 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { TravelImage } from "@/components/ui/travel-image";
 import { cn } from "@/lib/utils";
-import type { AiCard, AiConversationSummary, AiMessagePayload } from "@/lib/ai/types";
+import type {
+  AiCard,
+  AiConversationSummary,
+  AiMessagePayload,
+  AiModelMode,
+} from "@/lib/ai/types";
 
 interface StreamMessage extends AiMessagePayload {
   pending?: boolean;
@@ -52,6 +76,24 @@ interface StreamMessage extends AiMessagePayload {
 const SMALL_SCREEN_BREAKPOINT = 768;
 const DEFAULT_SHEET_WIDTH = 544;
 const MAX_EXPANDED_SHEET_WIDTH = 980;
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_FILES_PER_MESSAGE = 6;
+const ACCEPTED_FILE_TYPES = [
+  ".pdf",
+  ".txt",
+  ".md",
+  ".markdown",
+  ".csv",
+  ".json",
+  ".docx",
+  ".xlsx",
+].join(",");
+
+const MODEL_MODE_LABELS: Record<AiModelMode, string> = {
+  auto: "Auto",
+  "gpt-5.4": "GPT 5.4",
+  "gpt-5.4-mini": "GPT 5.4 Mini",
+};
 
 function renderInlineMarkdown(content: string) {
   const parts = content.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
@@ -200,6 +242,45 @@ function MarkdownMessage({
   }
 
   return <div className="space-y-3">{renderMarkdownBlocks(content)}</div>;
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getDisplayAttachments(message: StreamMessage) {
+  const rawAttachments =
+    message.metadata?.localFiles ?? message.metadata?.attachments ?? [];
+  if (!Array.isArray(rawAttachments)) return [];
+
+  return rawAttachments
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const attachment = item as {
+        filename?: unknown;
+        name?: unknown;
+        bytes?: unknown;
+        size?: unknown;
+      };
+      const filename =
+        typeof attachment.filename === "string"
+          ? attachment.filename
+          : typeof attachment.name === "string"
+            ? attachment.name
+            : null;
+      if (!filename) return null;
+      const bytes =
+        typeof attachment.bytes === "number"
+          ? attachment.bytes
+          : typeof attachment.size === "number"
+            ? attachment.size
+            : 0;
+
+      return { filename, bytes };
+    })
+    .filter((item): item is { filename: string; bytes: number } => Boolean(item));
 }
 
 function isUndoableAssistantMessage(message: StreamMessage) {
@@ -368,11 +449,20 @@ function MessageCards({
             target={card.href ? "_blank" : undefined}
             rel={card.href ? "noreferrer" : undefined}
             className={cn(
-              "block rounded-3xl border border-slate-200/80 bg-white/90 p-4 shadow-sm transition hover:border-slate-300",
+              "block overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 shadow-sm transition hover:border-slate-300",
               !card.href && "pointer-events-none"
             )}
           >
-            <div className="flex items-start justify-between gap-3">
+            {card.imageUrl ? (
+              <div className="h-36 overflow-hidden">
+                <TravelImage
+                  src={card.imageUrl}
+                  alt={card.title}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            ) : null}
+            <div className="flex items-start justify-between gap-3 p-4 pb-0">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                   {card.category}
@@ -387,9 +477,9 @@ function MessageCards({
               ) : null}
             </div>
             {card.description ? (
-              <p className="mt-3 text-sm leading-6 text-slate-600">{card.description}</p>
+              <p className="px-4 pt-3 text-sm leading-6 text-slate-600">{card.description}</p>
             ) : null}
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 p-4 pt-3">
               {card.priceLabel ? <Badge className="bg-slate-100 text-slate-700">{card.priceLabel}</Badge> : null}
               {card.ratingLabel ? <Badge className="bg-slate-100 text-slate-700">{card.ratingLabel}</Badge> : null}
               {(card.badges ?? []).map((badge) => (
@@ -424,6 +514,9 @@ export function AiConciergeSheet({
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
   const [messages, setMessages] = useState<StreamMessage[]>([]);
   const [input, setInput] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [modelMode, setModelMode] = useState<AiModelMode>("auto");
   const [isLoading, setIsLoading] = useState(false);
   const [approvalStatusById, setApprovalStatusById] = useState<
     Record<number, "approved" | "rejected">
@@ -434,6 +527,7 @@ export function AiConciergeSheet({
   const [undoingMessageId, setUndoingMessageId] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -550,6 +644,48 @@ export function AiConciergeSheet({
     setIsLoading(false);
   }
 
+  function addSelectedFiles(files: FileList | File[] | null) {
+    if (!files?.length) return;
+    const incomingFiles = Array.from(files);
+
+    setSelectedFiles((current) => {
+      const next = [...current];
+      for (const file of incomingFiles) {
+        if (next.length >= MAX_FILES_PER_MESSAGE) {
+          toast.error(`Upload up to ${MAX_FILES_PER_MESSAGE} files per message.`);
+          break;
+        }
+        if (file.size > MAX_UPLOAD_BYTES) {
+          toast.error(`${file.name} is too large. Use files up to 25 MB.`);
+          continue;
+        }
+        if (
+          next.some(
+            (existing) =>
+              existing.name === file.name &&
+              existing.size === file.size &&
+              existing.lastModified === file.lastModified
+          )
+        ) {
+          continue;
+        }
+        next.push(file);
+      }
+      return next;
+    });
+  }
+
+  function removeSelectedFile(index: number) {
+    setSelectedFiles((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function handleFileDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDraggingFiles(false);
+    addSelectedFiles(event.dataTransfer.files);
+  }
+
   async function handleApproval(approvalId: number, approved: boolean, externalUrl?: string | null) {
     const path = approved ? "approve" : "reject";
     const response = await fetch(`/api/ai/approvals/${approvalId}/${path}`, {
@@ -664,20 +800,35 @@ export function AiConciergeSheet({
 
   async function handleSend(nextMessage?: string) {
     const content = (nextMessage ?? input).trim();
-    if (!content || isLoading) return;
+    const filesForMessage = nextMessage ? [] : selectedFiles;
+    if ((!content && !filesForMessage.length) || isLoading) return;
     const abortController = new AbortController();
 
     const optimisticUser: StreamMessage = {
       id: Date.now(),
       role: "user",
-      content,
+      content: content || "Please read the uploaded file(s).",
       cards: [],
       followups: [],
+      metadata: filesForMessage.length
+        ? {
+            localFiles: filesForMessage.map((file) => ({
+              filename: file.name,
+              bytes: file.size,
+            })),
+          }
+        : null,
       createdAt: new Date().toISOString(),
     };
 
     setMessages((current) => [...current, optimisticUser]);
     setInput("");
+    if (!nextMessage) {
+      setSelectedFiles([]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
     setIsLoading(true);
     abortControllerRef.current = abortController;
     let shouldRefreshRoute = false;
@@ -685,12 +836,30 @@ export function AiConciergeSheet({
     try {
       const response = await fetch("/api/ai/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         signal: abortController.signal,
-        body: JSON.stringify({
-          message: content,
-          conversationId: activeConversationId,
-        }),
+        ...(filesForMessage.length
+          ? {
+              body: (() => {
+                const formData = new FormData();
+                formData.set("message", content);
+                if (activeConversationId) {
+                  formData.set("conversationId", String(activeConversationId));
+                }
+                formData.set("modelMode", modelMode);
+                for (const file of filesForMessage) {
+                  formData.append("files", file, file.name);
+                }
+                return formData;
+              })(),
+            }
+          : {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                message: content,
+                conversationId: activeConversationId,
+                modelMode,
+              }),
+            }),
       });
 
       if (!response.ok || !response.body) {
@@ -1034,6 +1203,7 @@ export function AiConciergeSheet({
                     const isAssistant = message.role === "assistant";
                     const isUndoing = undoingMessageId === message.id;
                     const canUndo = isUndoableAssistantMessage(message);
+                    const attachments = getDisplayAttachments(message);
                     return (
                       <div
                         key={message.id}
@@ -1062,6 +1232,31 @@ export function AiConciergeSheet({
                               message.content || (message.pending ? "Thinking…" : "")
                             )}
                           </div>
+                          {attachments.length ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {attachments.map((attachment) => (
+                                <span
+                                  key={`${message.id}-${attachment.filename}`}
+                                  className={cn(
+                                    "inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs",
+                                    isAssistant
+                                      ? "border-slate-200 bg-slate-50 text-slate-700"
+                                      : "border-white/20 bg-white/10 text-white"
+                                  )}
+                                >
+                                  <FileText className="size-3.5 shrink-0" />
+                                  <span className="min-w-0 truncate">
+                                    {attachment.filename}
+                                  </span>
+                                  {attachment.bytes ? (
+                                    <span className="shrink-0 opacity-70">
+                                      {formatBytes(attachment.bytes)}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                           {message.pending ? (
                             <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                               <Loader2 className="size-3 animate-spin" />
@@ -1152,7 +1347,129 @@ export function AiConciergeSheet({
                 ))}
               </div>
             ) : null}
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Model
+              </p>
+              <Select
+                value={modelMode}
+                onValueChange={(value) => setModelMode(value as AiModelMode)}
+                disabled={isLoading}
+              >
+                <SelectTrigger className="h-9 rounded-full border-white/60 bg-white/90 px-3">
+                  <SelectValue>{MODEL_MODE_LABELS[modelMode]}</SelectValue>
+                </SelectTrigger>
+                <SelectContent align="end" className="min-w-44">
+                  <SelectItem value="auto">Auto</SelectItem>
+                  <SelectItem value="gpt-5.4">GPT 5.4</SelectItem>
+                  <SelectItem value="gpt-5.4-mini">GPT 5.4 Mini</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div
+              onDragEnter={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setIsDraggingFiles(true);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setIsDraggingFiles(true);
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  setIsDraggingFiles(false);
+                }
+              }}
+              onDrop={handleFileDrop}
+              className={cn(
+                "mb-3 rounded-[1.35rem] border border-dashed p-3 transition",
+                isDraggingFiles
+                  ? "border-primary/55 bg-primary/10 ring-2 ring-primary/15"
+                  : selectedFiles.length
+                    ? "border-primary/25 bg-white/82"
+                    : "border-slate-300 bg-white/56 hover:border-primary/35 hover:bg-white/78"
+              )}
+            >
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 text-left"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isLoading}
+                >
+                  <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <UploadCloud className="size-5" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-slate-900">
+                      {isDraggingFiles
+                        ? "Drop files to attach"
+                        : selectedFiles.length
+                          ? `${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"} attached`
+                          : "Attach files"}
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                      Drag and drop files here or click to browse. PDF, text, CSV,
+                      JSON, DOCX, and XLSX are supported.
+                    </span>
+                  </span>
+                </button>
+                {selectedFiles.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedFiles.map((file, index) => (
+                      <span
+                        key={`${file.name}-${file.size}-${file.lastModified}`}
+                        className="inline-flex max-w-full items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 shadow-sm"
+                      >
+                        <FileText className="size-3.5 shrink-0 text-primary" />
+                        <span className="min-w-0 truncate">{file.name}</span>
+                        <span className="shrink-0 text-muted-foreground">
+                          {formatBytes(file.size)}
+                        </span>
+                        <button
+                          type="button"
+                          className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                          aria-label={`Remove ${file.name}`}
+                          onClick={() => removeSelectedFile(index)}
+                          disabled={isLoading}
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
             <div className="flex items-end gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={ACCEPTED_FILE_TYPES}
+                className="sr-only"
+                onChange={(event) => {
+                  addSelectedFiles(event.target.files);
+                  event.target.value = "";
+                }}
+                disabled={isLoading}
+              />
+              <Button
+                type="button"
+                size="icon-lg"
+                variant="outline"
+                className="h-12 w-12 rounded-full bg-white/90"
+                aria-label="Attach files"
+                title="Attach files"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+              >
+                <Paperclip className="size-4" />
+              </Button>
               <Textarea
                 ref={inputRef}
                 rows={1}
@@ -1171,7 +1488,7 @@ export function AiConciergeSheet({
               <Button
                 className="h-12 rounded-full px-4"
                 variant={isLoading ? "destructive" : "default"}
-                disabled={!isLoading && !input.trim()}
+                disabled={!isLoading && !input.trim() && !selectedFiles.length}
                 onClick={() => {
                   if (isLoading) {
                     abortActiveResponse();

@@ -14,6 +14,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TravelImage } from "@/components/ui/travel-image";
 import type { DaySummary } from "@/lib/types";
 
 interface TripBuilderProps {
@@ -420,8 +421,7 @@ export function TripBuilder({ initialDays, canEdit }: TripBuilderProps) {
                   <div className="overflow-hidden rounded-[1.5rem] border border-border/60 bg-secondary/30">
                     {day.coverImageUrl ? (
                       <div className="relative h-40">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
+                        <TravelImage
                           src={day.coverImageUrl}
                           alt={`${day.title} cover`}
                           className="h-full w-full object-cover"

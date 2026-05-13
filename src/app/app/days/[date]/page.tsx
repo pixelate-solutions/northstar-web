@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { DayNotesEditor } from "@/components/dashboard/DayNotesEditor";
+import { DayMap } from "@/components/map/DayMap";
 import { DaySchedule } from "@/components/schedule/DaySchedule";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WeatherChip } from "@/components/shared/WeatherChip";
@@ -177,6 +178,7 @@ export default async function DayDetailPage({
             dayId={day.id}
             date={day.date}
             events={day.events}
+            locations={day.locations}
             sortable
             editable={canEdit}
             title="Sortable Schedule"
@@ -184,6 +186,15 @@ export default async function DayDetailPage({
         </div>
 
         <div className="min-w-0 space-y-6">
+          <Card className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80">
+            <CardHeader>
+              <CardTitle>Day Map</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DayMap locations={day.locations} />
+            </CardContent>
+          </Card>
+
           <Card className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80">
             <CardHeader>
               <CardTitle>Food Highlights</CardTitle>

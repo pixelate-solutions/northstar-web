@@ -11,6 +11,7 @@ import {
 } from "react-leaflet";
 
 import { Badge } from "@/components/ui/badge";
+import { TravelImage } from "@/components/ui/travel-image";
 import { getCategoryLeafletIcon } from "@/components/map/categoryLeafletIcon";
 import type { Location } from "@/db/schema";
 import { getCategoryConfig } from "@/lib/category-config";
@@ -20,6 +21,23 @@ function MapFlyTo({ center }: { center: [number, number] | null }) {
   useEffect(() => {
     if (center) map.flyTo(center, Math.max(map.getZoom(), 13), { duration: 0.8 });
   }, [center, map]);
+  return null;
+}
+
+function MapFitBounds({ positions }: { positions: [number, number][] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (positions.length === 1) {
+      map.setView(positions[0]!, 12);
+      return;
+    }
+
+    if (positions.length > 1) {
+      map.fitBounds(positions, { padding: [36, 36], maxZoom: 13 });
+    }
+  }, [map, positions]);
+
   return null;
 }
 
@@ -40,6 +58,10 @@ export function DayMapLeaflet({ locations }: { locations: Location[] }) {
     () => hikeLocations.map((loc) => [Number(loc.lat), Number(loc.lng)]),
     [hikeLocations]
   );
+  const allPositions = useMemo<[number, number][]>(
+    () => locations.map((loc) => [Number(loc.lat), Number(loc.lng)]),
+    [locations]
+  );
 
   const flyToCenter = useMemo<[number, number] | null>(() => {
     if (!activeId) return null;
@@ -55,12 +77,13 @@ export function DayMapLeaflet({ locations }: { locations: Location[] }) {
           center={center}
           zoom={10}
           scrollWheelZoom
-          className="h-52 w-full sm:h-[22rem]"
+          className="h-[24rem] w-full sm:h-[30rem]"
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          <MapFitBounds positions={allPositions} />
           <MapFlyTo center={flyToCenter} />
 
           {hikePositions.length >= 2 ? (
@@ -153,21 +176,37 @@ export function DayMapLeaflet({ locations }: { locations: Location[] }) {
               key={location.id}
               type="button"
               onClick={() => setActiveId(isActive ? null : location.id)}
-              className={`w-full rounded-2xl border p-4 text-left transition-colors ${
+              className={`w-full overflow-hidden rounded-2xl border text-left transition-colors ${
                 isActive
                   ? "border-primary/40 bg-primary/8 ring-1 ring-primary/30"
                   : "border-border/60 bg-secondary/30 hover:border-border hover:bg-secondary/50"
               }`}
             >
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-medium">{location.name}</p>
-                <Badge className="bg-secondary text-foreground capitalize">
-                  {location.type}
-                </Badge>
-              </div>
-              {location.tip ? (
-                <p className="mt-2 text-sm text-muted-foreground">{location.tip}</p>
+              {location.imageUrl ? (
+                <div className="h-24 overflow-hidden">
+                  <TravelImage
+                    src={location.imageUrl}
+                    alt={location.name}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
               ) : null}
+              <div className="p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium">{location.name}</p>
+                  <Badge className="bg-secondary text-foreground capitalize">
+                    {location.type}
+                  </Badge>
+                </div>
+                {location.description ? (
+                  <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+                    {location.description}
+                  </p>
+                ) : null}
+                {location.tip ? (
+                  <p className="mt-2 text-sm text-muted-foreground">{location.tip}</p>
+                ) : null}
+              </div>
             </button>
           );
         })}

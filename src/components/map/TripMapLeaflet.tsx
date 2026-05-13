@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TravelImage } from "@/components/ui/travel-image";
 import { getCategoryLeafletIcon } from "@/components/map/categoryLeafletIcon";
 import { getCategoryConfig } from "@/lib/category-config";
 import type { DaySummary } from "@/lib/types";
@@ -35,6 +36,7 @@ type MapPin = {
   locationLabel: string | null;
   description: string | null;
   tip: string | null;
+  imageUrl: string | null;
   mapsHref: string;
   timeLabel: string | null;
   dayId: number;
@@ -77,6 +79,7 @@ function createEventPin(day: DaySummary, event: DaySummary["events"][number]): M
     locationLabel: event.location,
     description: event.description,
     tip: event.tip,
+    imageUrl: null,
     mapsHref: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
       event.location?.trim() ? event.location : `${event.lat},${event.lng}`
     )}`,
@@ -88,10 +91,42 @@ function createEventPin(day: DaySummary, event: DaySummary["events"][number]): M
   };
 }
 
+function createLocationPin(day: DaySummary, location: DaySummary["locations"][number]): MapPin {
+  return {
+    id: `location-${location.id}`,
+    title: location.name,
+    category: location.type,
+    lat: Number(location.lat),
+    lng: Number(location.lng),
+    locationLabel: location.name,
+    description: location.description,
+    tip: location.tip,
+    imageUrl: location.imageUrl,
+    mapsHref:
+      location.googleMapsUrl ??
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        `${location.lat},${location.lng}`
+      )}`,
+    timeLabel: null,
+    dayId: day.id,
+    dayNumber: day.dayNumber,
+    dayTitle: day.title,
+    dayDate: day.date,
+  };
+}
+
 function getDayPins(day: DaySummary): MapPin[] {
-  return day.events
+  const eventPins = day.events
     .filter((event) => hasMapCoordinates(event))
     .map((event) => createEventPin(day, event));
+  const eventNames = new Set(
+    eventPins.map((pin) => pin.title.trim().toLowerCase())
+  );
+  const locationPins = day.locations
+    .filter((location) => !eventNames.has(location.name.trim().toLowerCase()))
+    .map((location) => createLocationPin(day, location));
+
+  return [...eventPins, ...locationPins];
 }
 
 function formatDriveDuration(seconds: number) {
@@ -689,6 +724,15 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                         : "border-border/70 bg-white hover:border-primary/25 hover:bg-secondary/55"
                     }`}
                   >
+                    {pin.imageUrl ? (
+                      <div className="-m-4 mb-3 h-24 overflow-hidden rounded-t-[1.35rem]">
+                        <TravelImage
+                          src={pin.imageUrl}
+                          alt={pin.title}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    ) : null}
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-medium">{pin.title}</p>
@@ -822,6 +866,13 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                     <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
                       {pin.title}
                     </p>
+                    {pin.imageUrl ? (
+                      <TravelImage
+                        src={pin.imageUrl}
+                        alt={pin.title}
+                        className="mb-2 h-[90px] w-full rounded-xl object-cover"
+                      />
+                    ) : null}
                     <p
                       style={{
                         fontSize: 10,
@@ -907,6 +958,15 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                           : "border-white/70 bg-white"
                       }`}
                     >
+                      {pin.imageUrl ? (
+                        <div className="-mx-3 -mt-2.5 mb-2 h-16 overflow-hidden rounded-t-[1.2rem]">
+                          <TravelImage
+                            src={pin.imageUrl}
+                            alt={pin.title}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      ) : null}
                       <p className="truncate text-sm font-medium">{pin.title}</p>
                       <p className="mt-1 truncate text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                         {formatDateMedium(pin.dayDate)}

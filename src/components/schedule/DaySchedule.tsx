@@ -33,7 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Event } from "@/db/schema";
+import type { Event, Location } from "@/db/schema";
 import { timeToMinutes } from "@/lib/utils";
 
 function sortEventsByTime(items: Event[]) {
@@ -51,6 +51,7 @@ function sortEventsByTime(items: Event[]) {
 function SortableEvent({
   event,
   date,
+  imageUrl,
   sortable,
   onOpen,
   onEdit,
@@ -58,6 +59,7 @@ function SortableEvent({
 }: {
   event: Event;
   date: string;
+  imageUrl?: string | null;
   sortable: boolean;
   onOpen?: () => void;
   onEdit?: () => void;
@@ -79,6 +81,7 @@ function SortableEvent({
       <EventCard
         event={event}
         date={date}
+        imageUrl={imageUrl}
         sortable={sortable}
         onOpen={onOpen}
         dragHandleProps={{
@@ -95,12 +98,14 @@ function SortableEvent({
 function StaticEvent({
   event,
   date,
+  imageUrl,
   onOpen,
   onEdit,
   onDelete,
 }: {
   event: Event;
   date: string;
+  imageUrl?: string | null;
   onOpen?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -109,6 +114,7 @@ function StaticEvent({
     <EventCard
       event={event}
       date={date}
+      imageUrl={imageUrl}
       onOpen={onOpen}
       onEdit={onEdit}
       onDelete={onDelete}
@@ -120,6 +126,7 @@ interface DayScheduleProps {
   dayId: number;
   date: string;
   events: Event[];
+  locations?: Location[];
   sortable?: boolean;
   editable?: boolean;
   showAddButton?: boolean;
@@ -131,6 +138,7 @@ export function DaySchedule({
   dayId,
   date,
   events,
+  locations = [],
   sortable = false,
   editable = true,
   showAddButton = true,
@@ -164,6 +172,31 @@ export function DaySchedule({
     [items]
   );
   const interactiveSortable = sortable && editable && hasMounted;
+  const eventImageByTitle = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const location of locations) {
+      if (!location.imageUrl) continue;
+      map.set(location.name.trim().toLowerCase(), location.imageUrl);
+    }
+    return map;
+  }, [locations]);
+
+  function getEventImage(event: Event) {
+    const keys = [event.title, event.location]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map((value) => value.trim().toLowerCase());
+
+    for (const key of keys) {
+      const exact = eventImageByTitle.get(key);
+      if (exact) return exact;
+      const partial = [...eventImageByTitle.entries()].find(
+        ([locationName]) => key.includes(locationName) || locationName.includes(key)
+      );
+      if (partial?.[1]) return partial[1];
+    }
+
+    return null;
+  }
 
   async function removeEvent(event: Event) {
     const response = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
@@ -287,6 +320,7 @@ export function DaySchedule({
                   <SortableEvent
                     event={event}
                     date={date}
+                    imageUrl={getEventImage(event)}
                     sortable
                     onOpen={
                       editable
@@ -318,6 +352,7 @@ export function DaySchedule({
               <StaticEvent
                 event={event}
                 date={date}
+                imageUrl={getEventImage(event)}
                 onOpen={
                   editable
                     ? () => {

@@ -61,6 +61,16 @@ export interface AiConversationSummary {
   updatedAt: string;
 }
 
+export interface AiUploadedFile {
+  fileId?: string;
+  fileData?: string;
+  filename: string;
+  mimeType: string;
+  bytes: number;
+}
+
+export type AiModelMode = "auto" | "gpt-5.4" | "gpt-5.4-mini";
+
 export interface AiChatResponse {
   conversation: AiConversationSummary;
   message: AiMessagePayload;
