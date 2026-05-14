@@ -148,10 +148,7 @@ export function DashboardClient({
                 : "border-border/70 bg-card/70 text-muted-foreground hover:text-foreground"
             }`}
           >
-            Day {day.dayNumber}
-            <span className="ml-2 text-xs text-muted-foreground">
-              {formatDateShort(day.date)}
-            </span>
+            {formatDateShort(day.date)}
           </button>
         ))}
       </div>

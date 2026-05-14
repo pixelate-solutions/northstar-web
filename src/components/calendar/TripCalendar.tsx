@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DaySummary } from "@/lib/types";
 import { getCategoryConfig } from "@/lib/category-config";
-import { formatDate, formatTimeRange } from "@/lib/utils";
+import { formatDate, formatDateShort, formatTimeRange } from "@/lib/utils";
 
 const locales = { "en-US": enUS };
 const localizer = dateFnsLocalizer({
@@ -135,7 +135,7 @@ export function TripCalendar({
                   : "border-border/70 bg-card/70 text-muted-foreground"
               }`}
             >
-              Day {day.dayNumber}
+              {formatDateShort(day.date)}
             </button>
           ))}
         </div>

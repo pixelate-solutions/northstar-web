@@ -25,7 +25,7 @@ import { TravelImage } from "@/components/ui/travel-image";
 import { getCategoryLeafletIcon } from "@/components/map/categoryLeafletIcon";
 import { getCategoryConfig } from "@/lib/category-config";
 import type { DaySummary } from "@/lib/types";
-import { formatDateMedium, formatTimeRange } from "@/lib/utils";
+import { formatDateMedium, formatDateShort, formatTimeRange } from "@/lib/utils";
 
 type MapPin = {
   id: string;
@@ -497,7 +497,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
             <p className="truncate text-sm font-semibold text-foreground">
               {filter === "all"
                 ? "All Days"
-                : `Day ${filter} · ${
+                : `${formatDateShort(days.find((day) => day.dayNumber === filter)?.date ?? "")} · ${
                     days.find((day) => day.dayNumber === filter)?.title ?? "Trip Day"
                   }`}
             </p>
@@ -611,7 +611,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
               }}
               onDoubleClick={() => router.push(`/app/days/${day.date}`)}
             >
-              Day {day.dayNumber}
+              {formatDateShort(day.date)}
             </button>
           ))}
         </div>
@@ -621,7 +621,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-primary/80">
-                  {filter === "all" ? "Visible Stops" : `Day ${filter} Stops`}
+                  {filter === "all" ? "Visible Stops" : `${formatDateShort(days.find((day) => day.dayNumber === filter)?.date ?? "")} Stops`}
                 </p>
                 <h3 className="text-lg font-semibold">
                   {filteredPins.length} stop{filteredPins.length === 1 ? "" : "s"}
