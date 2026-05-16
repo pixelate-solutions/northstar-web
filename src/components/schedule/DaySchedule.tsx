@@ -34,19 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { Event, Location } from "@/db/schema";
-import { timeToMinutes } from "@/lib/utils";
-
-function sortEventsByTime(items: Event[]) {
-  return [...items].sort((a, b) => {
-    const startDiff = timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
-    if (startDiff !== 0) return startDiff;
-
-    const endDiff = timeToMinutes(a.endTime) - timeToMinutes(b.endTime);
-    if (endDiff !== 0) return endDiff;
-
-    return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-  });
-}
+import { sortEventsByTime } from "@/lib/utils";
 
 function SortableEvent({
   event,
@@ -316,7 +304,7 @@ export function DaySchedule({
           >
             <div className="space-y-4">
               {items.map((event) => (
-                <div key={event.id}>
+                <div key={event.id} id={`event-${event.id}`} className="scroll-mt-6">
                   <SortableEvent
                     event={event}
                     date={date}
@@ -348,7 +336,7 @@ export function DaySchedule({
       ) : (
         <div className="space-y-4">
           {items.map((event) => (
-            <div key={event.id}>
+            <div key={event.id} id={`event-${event.id}`} className="scroll-mt-6">
               <StaticEvent
                 event={event}
                 date={date}

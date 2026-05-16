@@ -19,12 +19,23 @@ import { useRouter } from "next/navigation";
 
 import { CalendarEventItem } from "@/components/calendar/CalendarEventItem";
 import { EventModal } from "@/components/schedule/EventModal";
-import { MobileDayNavigator } from "@/components/shared/MobileDayNavigator";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { DaySummary } from "@/lib/types";
 import { getCategoryConfig } from "@/lib/category-config";
-import { formatDate, formatDateShort, formatTimeRange } from "@/lib/utils";
+import {
+  formatDate,
+  formatDateShort,
+  formatTimeRange,
+  sortEventsByTime,
+} from "@/lib/utils";
 
 const locales = { "en-US": enUS };
 const localizer = dateFnsLocalizer({
@@ -58,6 +69,11 @@ function getIsMobileViewport() {
   return typeof window !== "undefined" && window.innerWidth < 640;
 }
 
+function getInitialCalendarDate(days: DaySummary[]) {
+  const firstTripDate = days[0]?.date;
+  return firstTripDate ? new Date(`${firstTripDate}T00:00:00`) : new Date();
+}
+
 export function TripCalendar({
   days,
   canEdit = true,
@@ -75,7 +91,7 @@ export function TripCalendar({
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<TripCalendarEvent | null>(null);
   const [desktopView, setDesktopView] = useState<View>("month");
-  const [calendarDate, setCalendarDate] = useState(new Date("2026-04-08T00:00:00"));
+  const [calendarDate, setCalendarDate] = useState(() => getInitialCalendarDate(days));
   const view = isMobileViewport ? "agenda" : desktopView;
 
   const calendarEvents = useMemo<TripCalendarEvent[]>(
@@ -98,54 +114,22 @@ export function TripCalendar({
   );
 
   const selectedDay = days.find((day) => day.id === selectedDayId) ?? days[0];
-  const selectedDayIndex = days.findIndex((day) => day.id === selectedDayId);
+
+  function selectDay(day: DaySummary) {
+    setSelectedDayId(day.id);
+    setSelectedEvent(null);
+    setCalendarDate(new Date(`${day.date}T00:00:00`));
+  }
 
   return (
     <div className="space-y-6">
-      <div className="space-y-3">
-        <MobileDayNavigator
-          className="sm:hidden"
-          days={days}
-          selectedIndex={selectedDayIndex >= 0 ? selectedDayIndex : 0}
-          onSelectIndex={(index) => {
-            if (index === null) {
-              return;
-            }
-
-            const day = days[index];
-            if (day) {
-              setSelectedDayId(day.id);
-            }
-          }}
-        />
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="hidden flex-wrap gap-2 sm:flex">
-          {days.map((day) => (
-            <button
-              key={day.id}
-              type="button"
-              onClick={() => {
-                setSelectedDayId(day.id);
-              }}
-              onDoubleClick={() => router.push(`/app/days/${day.date}`)}
-              className={`rounded-full border px-4 py-2 text-sm ${
-                day.id === selectedDayId
-                  ? "border-primary/30 bg-primary/10 text-primary"
-                  : "border-border/70 bg-card/70 text-muted-foreground"
-              }`}
-            >
-              {formatDateShort(day.date)}
-            </button>
-          ))}
-        </div>
+      <div className="flex justify-end">
         {canEdit ? (
           <Button className="w-full sm:w-auto" onClick={() => setModalOpen(true)}>
             <Plus className="size-4" />
             Add Event
           </Button>
         ) : null}
-        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.45fr_0.8fr]">
@@ -212,7 +196,46 @@ export function TripCalendar({
         <Card className="rounded-[2rem] border border-border/70 bg-card/80">
           <CardHeader>
             <CardTitle>
-              {selectedDay ? formatDate(selectedDay.date) : "Day Summary"}
+              {selectedDay ? (
+                <Select
+                  value={selectedDay.date}
+                  onValueChange={(date) => {
+                    const day = days.find((item) => item.date === date);
+                    if (day) {
+                      selectDay(day);
+                    }
+                  }}
+                  disabled={days.length <= 1}
+                >
+                  <SelectTrigger className="h-auto max-w-full rounded-full border-0 bg-secondary px-4 py-2 text-base font-semibold text-foreground shadow-none hover:bg-secondary/80 focus-visible:ring-primary/20 data-[size=default]:h-auto">
+                    <SelectValue>{formatDate(selectedDay.date)}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent
+                    align="start"
+                    alignItemWithTrigger={false}
+                    className="max-h-72 min-w-64 overflow-y-auto"
+                  >
+                    {days.map((day) => (
+                      <SelectItem
+                        key={day.id}
+                        value={day.date}
+                        className="hover:cursor-pointer hover:bg-accent/10 focus:bg-accent/10 focus:text-foreground"
+                      >
+                        <span className="flex min-w-0 flex-col items-start gap-0.5">
+                          <span className="font-medium">
+                            Day {day.dayNumber} · {formatDateShort(day.date)}
+                          </span>
+                          <span className="max-w-56 truncate text-xs text-muted-foreground">
+                            {day.title}
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                "Day Summary"
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -239,17 +262,19 @@ export function TripCalendar({
             ) : null}
 
             <div className="space-y-3">
-              {selectedDay?.events.map((event) => (
-                <div
-                  key={event.id}
-                  className="rounded-2xl border border-border/60 bg-secondary/35 p-4"
-                >
-                  <p className="font-medium">{event.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {formatTimeRange(event.startTime, event.endTime)}
-                  </p>
-                </div>
-              ))}
+              {selectedDay
+                ? sortEventsByTime(selectedDay.events).map((event) => (
+                    <div
+                      key={event.id}
+                      className="rounded-2xl border border-border/60 bg-secondary/35 p-4"
+                    >
+                      <p className="font-medium">{event.title}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {formatTimeRange(event.startTime, event.endTime)}
+                      </p>
+                    </div>
+                  ))
+                : null}
             </div>
           </CardContent>
         </Card>

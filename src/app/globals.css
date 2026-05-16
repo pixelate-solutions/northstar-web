@@ -187,8 +187,22 @@
 
 .trip-calendar .rbc-btn-group {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.25rem;
   flex-wrap: wrap;
+}
+
+.trip-calendar .rbc-toolbar .rbc-btn-group:first-child button:first-child {
+  display: none;
+}
+
+.trip-calendar .rbc-toolbar .rbc-btn-group button {
+  border-radius: 999px;
+  font-size: 0.8125rem;
+}
+
+.trip-calendar .rbc-toolbar .rbc-btn-group:first-child button:first-child + button {
+  border-radius: 999px;
+  margin-left: 0;
 }
 
 .trip-calendar .rbc-toolbar button {

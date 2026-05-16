@@ -103,6 +103,24 @@ export function timeToMinutes(time: string | null | undefined): number {
   return hours * 60 + minutes;
 }
 
+export function sortEventsByTime<
+  T extends {
+    startTime: string | null;
+    endTime: string | null;
+    sortOrder?: number | null;
+  },
+>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const startDiff = timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
+    if (startDiff !== 0) return startDiff;
+
+    const endDiff = timeToMinutes(a.endTime) - timeToMinutes(b.endTime);
+    if (endDiff !== 0) return endDiff;
+
+    return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+  });
+}
+
 export function isEventActive(
   startTime: string | null,
   endTime: string | null,

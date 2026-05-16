@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { DayNotesEditor } from "@/components/dashboard/DayNotesEditor";
+import { DayDateSelect } from "@/components/days/DayDateSelect";
 import { DayMap } from "@/components/map/DayMap";
 import { DaySchedule } from "@/components/schedule/DaySchedule";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -20,7 +21,7 @@ import { buildMetadata } from "@/lib/metadata";
 import { getCurrentTripContext } from "@/lib/auth";
 import { getDayByDate, getDaysOverview, getPackingItems } from "@/lib/server-data";
 import { ensureStarterTrip } from "@/lib/trips";
-import { formatCurrency, formatDate, formatTimeRange } from "@/lib/utils";
+import { formatCurrency, formatTimeRange } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -138,9 +139,7 @@ export default async function DayDetailPage({
         <div className="min-w-0 space-y-6">
           <div className="min-w-0 rounded-[2rem] border border-border/70 bg-card/80 p-6">
             <div className="flex flex-wrap gap-2">
-              <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
-                {formatDate(day.date)}
-              </Badge>
+              <DayDateSelect days={allDays} currentDate={day.date} />
               <Badge className="max-w-full h-auto whitespace-normal bg-secondary/70 text-foreground break-words">
                 {day.sleepLocation ?? "Sleep TBD"}
               </Badge>

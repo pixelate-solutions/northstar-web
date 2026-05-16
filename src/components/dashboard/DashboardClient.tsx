@@ -3,17 +3,22 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { useRouter } from "next/navigation";
 
 import { CountdownBanner } from "@/components/dashboard/CountdownBanner";
 import { NextEventCard } from "@/components/dashboard/NextEventCard";
 import { QuickStats } from "@/components/dashboard/QuickStats";
 import { TodaySnapshot } from "@/components/dashboard/TodaySnapshot";
 import { DatabaseBanner } from "@/components/shared/DatabaseBanner";
-import { MobileDayNavigator } from "@/components/shared/MobileDayNavigator";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { WeatherChip } from "@/components/shared/WeatherChip";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Reminder } from "@/db/schema";
 import { useCurrentTimeZone } from "@/hooks/useCurrentTimeZone";
 import { getDashboardStats } from "@/lib/dashboard";
@@ -62,13 +67,11 @@ export function DashboardClient({
   defaultDate,
   databaseWarning,
 }: DashboardClientProps) {
-  const router = useRouter();
   const timeZone = useCurrentTimeZone();
   const [selectedDate, setSelectedDate] = useState(defaultDate);
 
   const selectedDay =
     bundle.days.find((day) => day.date === selectedDate) ?? bundle.days[0];
-  const selectedDayIndex = bundle.days.findIndex((day) => day.date === selectedDate);
   const tripDates = useMemo(() => bundle.days.map((day) => day.date), [bundle.days]);
   const stats = useMemo(
     () => getDashboardStats(bundle, selectedDate, timeZone),
@@ -118,39 +121,41 @@ export function DashboardClient({
         </Link>
       </div>
 
-      <MobileDayNavigator
-        className="sm:hidden"
-        days={bundle.days}
-        selectedIndex={selectedDayIndex >= 0 ? selectedDayIndex : 0}
-        onSelectIndex={(index) => {
-          if (index === null) {
-            return;
-          }
-
-          const day = bundle.days[index];
-          if (day) {
-            setSelectedDate(day.date);
-          }
-        }}
-      />
-
-      <div className="hidden flex-wrap gap-3 sm:flex">
-        {bundle.days.map((day) => (
-          <button
-            key={day.date}
-            type="button"
-            aria-label={`Select ${day.title}`}
-            onClick={() => setSelectedDate(day.date)}
-            onDoubleClick={() => router.push(`/app/days/${day.date}`)}
-            className={`min-w-fit rounded-full border px-4 py-2 text-sm transition ${
-              day.date === selectedDate
-                ? "border-primary/30 bg-primary/10 text-primary"
-                : "border-border/70 bg-card/70 text-muted-foreground hover:text-foreground"
-            }`}
+      <div className="flex">
+        <Select
+          value={selectedDay.date}
+          onValueChange={(date) => {
+            if (date) {
+              setSelectedDate(date);
+            }
+          }}
+        >
+          <SelectTrigger className="h-auto max-w-full rounded-full border-0 bg-secondary px-4 py-2 text-base font-semibold text-foreground shadow-none hover:bg-secondary/80 focus-visible:ring-primary/20 data-[size=default]:h-auto">
+            <SelectValue>{formatDateShort(selectedDay.date)}</SelectValue>
+          </SelectTrigger>
+          <SelectContent
+            align="start"
+            alignItemWithTrigger={false}
+            className="max-h-72 min-w-64 overflow-y-auto"
           >
-            {formatDateShort(day.date)}
-          </button>
-        ))}
+            {bundle.days.map((day) => (
+              <SelectItem
+                key={day.id}
+                value={day.date}
+                className="hover:cursor-pointer hover:bg-accent/10 focus:bg-accent/10 focus:text-foreground"
+              >
+                <span className="flex min-w-0 flex-col items-start gap-0.5">
+                  <span className="font-medium">
+                    Day {day.dayNumber} · {formatDateShort(day.date)}
+                  </span>
+                  <span className="max-w-56 truncate text-xs text-muted-foreground">
+                    {day.title}
+                  </span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <QuickStats stats={stats} />

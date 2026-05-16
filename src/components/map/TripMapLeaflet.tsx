@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { Marker as LeafletMarker } from "leaflet";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Route } from "lucide-react";
+import { Route } from "lucide-react";
 import {
   MapContainer,
   Marker,
@@ -21,11 +22,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TravelImage } from "@/components/ui/travel-image";
 import { getCategoryLeafletIcon } from "@/components/map/categoryLeafletIcon";
 import { getCategoryConfig } from "@/lib/category-config";
 import type { DaySummary } from "@/lib/types";
-import { formatDateMedium, formatDateShort, formatTimeRange } from "@/lib/utils";
+import {
+  formatDateMedium,
+  formatDateShort,
+  formatTimeRange,
+  sortEventsByTime,
+} from "@/lib/utils";
 
 type MapPin = {
   id: string;
@@ -67,6 +80,11 @@ function getDirectionsHref(start: MapPin, end: MapPin) {
   const origin = `${start.lat},${start.lng}`;
   const destination = `${end.lat},${end.lng}`;
   return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+}
+
+function getPinDayHref(pin: MapPin) {
+  const hash = pin.id.startsWith("event-") ? `#${pin.id}` : "";
+  return `/app/days/${pin.dayDate}${hash}`;
 }
 
 function createEventPin(day: DaySummary, event: DaySummary["events"][number]): MapPin {
@@ -116,7 +134,7 @@ function createLocationPin(day: DaySummary, location: DaySummary["locations"][nu
 }
 
 function getDayPins(day: DaySummary): MapPin[] {
-  const eventPins = day.events
+  const eventPins = sortEventsByTime(day.events)
     .filter((event) => hasMapCoordinates(event))
     .map((event) => createEventPin(day, event));
   const eventNames = new Set(
@@ -148,14 +166,32 @@ function formatDriveDistance(distanceMeters: number) {
 function MapFlyTo({
   center,
   zoom,
+  placement = "center",
 }: {
   center: [number, number] | null;
   zoom: number;
+  placement?: "center" | "lower-third";
 }) {
   const map = useMap();
   useEffect(() => {
-    if (center) map.flyTo(center, Math.max(map.getZoom(), zoom), { duration: 1 });
-  }, [center, map, zoom]);
+    if (!center) {
+      return;
+    }
+
+    const targetZoom = Math.max(map.getZoom(), zoom);
+    if (placement === "lower-third") {
+      const size = map.getSize();
+      const projectedCenter = map.project(center, targetZoom);
+      const offsetCenter = map.unproject(
+        projectedCenter.subtract([0, size.y / 6]),
+        targetZoom
+      );
+      map.flyTo([offsetCenter.lat, offsetCenter.lng], targetZoom, { duration: 1 });
+      return;
+    }
+
+    map.flyTo(center, targetZoom, { duration: 1 });
+  }, [center, map, placement, zoom]);
   return null;
 }
 
@@ -163,8 +199,10 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   const router = useRouter();
   const mobileCarouselRef = useRef<HTMLDivElement>(null);
   const mobileCarouselFrameRef = useRef<number | null>(null);
+  const markerRefs = useRef(new Map<string, LeafletMarker>());
   const [filter, setFilter] = useState<number | "all">("all");
   const [activePinId, setActivePinId] = useState<string | null>(null);
+  const [popupPinId, setPopupPinId] = useState<string | null>(null);
   const [routeMode, setRouteMode] = useState(false);
   const [routePointIds, setRoutePointIds] = useState<string[]>([]);
   const [drivingRoute, setDrivingRoute] = useState<DrivingRoute | null>(null);
@@ -200,34 +238,35 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
     () => filteredPins.find((pin) => pin.id === routePointIds[1]) ?? null,
     [filteredPins, routePointIds]
   );
-  const mobileFilterIndex = useMemo(() => {
-    if (filter === "all") {
-      return -1;
-    }
+  const selectedFilterDay =
+    filter === "all" ? null : days.find((day) => day.dayNumber === filter) ?? null;
 
-    return days.findIndex((day) => day.dayNumber === filter);
-  }, [days, filter]);
-
-  const flyTarget = useMemo<{ center: [number, number] | null; zoom: number }>(() => {
+  const flyTarget = useMemo<{
+    center: [number, number] | null;
+    placement: "center" | "lower-third";
+    zoom: number;
+  }>(() => {
     if (activePin) {
       return {
         center: [activePin.lat, activePin.lng],
+        placement: "lower-third",
         zoom: 13,
       };
     }
 
     if (filter === "all") {
-      return { center: null, zoom: 8 };
+      return { center: null, placement: "center", zoom: 8 };
     }
 
     const day = days.find((d) => d.dayNumber === filter);
     const first = day ? getDayPins(day)[0] : null;
     if (!first) {
-      return { center: null, zoom: 8 };
+      return { center: null, placement: "center", zoom: 8 };
     }
 
     return {
       center: [first.lat, first.lng],
+      placement: "center",
       zoom: 9,
     };
   }, [activePin, days, filter]);
@@ -241,6 +280,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   useEffect(() => {
     if (!filteredPins.length) {
       setActivePinId(null);
+      setPopupPinId(null);
       return;
     }
 
@@ -250,6 +290,19 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
         : filteredPins[0]!.id
     );
   }, [filteredPins]);
+
+  useEffect(() => {
+    if (!popupPinId) {
+      return;
+    }
+
+    if (!filteredPins.some((pin) => pin.id === popupPinId)) {
+      setPopupPinId(null);
+      return;
+    }
+
+    markerRefs.current.get(popupPinId)?.openPopup();
+  }, [filteredPins, popupPinId]);
 
   useEffect(() => {
     const container = mobileCarouselRef.current;
@@ -334,8 +387,29 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
     return () => controller.abort();
   }, [routeEnd, routeMode, routeStart]);
 
-  function handlePinSelection(pinId: string) {
+  function handlePinSelection(pinId: string, { openPopup = true } = {}) {
     setActivePinId(pinId);
+    if (openPopup) {
+      setPopupPinId(pinId);
+    }
+  }
+
+  function handleDayFilterChange(value: string | null) {
+    if (!value || value === "all") {
+      setFilter("all");
+      setActivePinId(null);
+      setPopupPinId(null);
+      return;
+    }
+
+    const dayNumber = Number(value);
+    if (!Number.isFinite(dayNumber)) {
+      return;
+    }
+
+    setFilter(dayNumber);
+    setActivePinId(null);
+    setPopupPinId(null);
   }
 
   function clearRoute() {
@@ -373,47 +447,6 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
       return [current[1] === pinId ? current[0]! : current[1]!, pinId];
     });
     setActivePinId(pinId);
-  }
-
-  function goToPreviousDay() {
-    if (filter === "all") {
-      return;
-    }
-
-    if (mobileFilterIndex <= 0) {
-      setFilter("all");
-      setActivePinId(null);
-      return;
-    }
-
-    const previousDay = days[mobileFilterIndex - 1];
-    if (!previousDay) {
-      return;
-    }
-
-    setFilter(previousDay.dayNumber);
-    setActivePinId(null);
-  }
-
-  function goToNextDay() {
-    if (filter === "all") {
-      const firstDay = days[0];
-      if (!firstDay) {
-        return;
-      }
-
-      setFilter(firstDay.dayNumber);
-      setActivePinId(null);
-      return;
-    }
-
-    const nextDay = days[mobileFilterIndex + 1];
-    if (!nextDay) {
-      return;
-    }
-
-    setFilter(nextDay.dayNumber);
-    setActivePinId(null);
   }
 
   function syncActivePinFromCarousel() {
@@ -465,63 +498,52 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
   return (
     <div className="space-y-4 lg:grid lg:grid-cols-[0.9fr_1.4fr] lg:items-start lg:gap-6 lg:space-y-0">
       <div className="space-y-3 lg:hidden">
-        <div className="flex items-center justify-between gap-3 rounded-[1.35rem] border border-white/45 bg-white/72 px-3 py-2 shadow-[0_18px_42px_rgba(191,102,62,0.08)] backdrop-blur-xl">
-          <button
-            type="button"
-            onClick={goToPreviousDay}
-            disabled={filter === "all"}
-            className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-white/60 bg-white/92 text-foreground shadow-[0_10px_24px_rgba(28,31,46,0.08)] transition disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Previous day"
-          >
-            <ChevronLeft className="size-4" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (filter === "all") {
-                return;
-              }
-
-              const currentDay = days.find((day) => day.dayNumber === filter);
-              if (currentDay) {
-                router.push(`/app/days/${currentDay.date}`);
-              }
-            }}
-            className="min-w-0 flex-1 rounded-[1.1rem] border border-white/55 bg-white/88 px-4 py-2 text-center transition hover:bg-white disabled:pointer-events-none"
-            disabled={filter === "all"}
-          >
-            <p className="text-xs uppercase tracking-[0.2em] text-primary/75">
-              {filter === "all" ? "Whole Trip" : "Current Day"}
-            </p>
-            <p className="truncate text-sm font-semibold text-foreground">
-              {filter === "all"
-                ? "All Days"
-                : `${formatDateShort(days.find((day) => day.dayNumber === filter)?.date ?? "")} · ${
-                    days.find((day) => day.dayNumber === filter)?.title ?? "Trip Day"
-                  }`}
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={goToNextDay}
-            disabled={filter !== "all" && mobileFilterIndex >= days.length - 1}
-            className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-white/60 bg-white/92 text-foreground shadow-[0_10px_24px_rgba(28,31,46,0.08)] transition disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Next day"
-          >
-            <ChevronRight className="size-4" />
-          </button>
-        </div>
-
         <div className="flex items-center justify-between gap-3 rounded-[1.35rem] border border-white/45 bg-white/70 px-4 py-3 shadow-[0_18px_42px_rgba(191,102,62,0.08)] backdrop-blur-xl">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs uppercase tracking-[0.24em] text-primary/80">
               {filter === "all" ? "Visible Stops" : `Day ${filter} Stops`}
             </p>
-            <p className="text-sm font-medium">
+            <p className="mt-1 text-sm font-medium">
               {filteredPins.length} stop{filteredPins.length === 1 ? "" : "s"}
             </p>
+            <Select
+              value={filter === "all" ? "all" : String(filter)}
+              onValueChange={handleDayFilterChange}
+            >
+              <SelectTrigger className="mt-3 h-auto max-w-full rounded-full border-0 bg-secondary px-4 py-2 text-base font-semibold text-foreground shadow-none hover:bg-secondary/80 focus-visible:ring-primary/20 data-[size=default]:h-auto">
+                <SelectValue>
+                  {selectedFilterDay ? formatDateShort(selectedFilterDay.date) : "All Days"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent
+                align="start"
+                alignItemWithTrigger={false}
+                className="max-h-72 min-w-64 overflow-y-auto"
+              >
+                <SelectItem
+                  value="all"
+                  className="hover:cursor-pointer hover:bg-accent/10 focus:bg-accent/10 focus:text-foreground"
+                >
+                  All Days
+                </SelectItem>
+                {days.map((day) => (
+                  <SelectItem
+                    key={day.id}
+                    value={String(day.dayNumber)}
+                    className="hover:cursor-pointer hover:bg-accent/10 focus:bg-accent/10 focus:text-foreground"
+                  >
+                    <span className="flex min-w-0 flex-col items-start gap-0.5">
+                      <span className="font-medium">
+                        Day {day.dayNumber} · {formatDateShort(day.date)}
+                      </span>
+                      <span className="max-w-56 truncate text-xs text-muted-foreground">
+                        {day.title}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <button
             type="button"
@@ -581,41 +603,6 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
       </div>
 
       <div className="hidden space-y-4 lg:block">
-        <div className="flex flex-wrap gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          <button
-            type="button"
-            className={`rounded-full border px-4 py-2 text-sm ${
-              filter === "all"
-                ? "border-primary/30 bg-primary/10 text-primary"
-                : "border-border/70 bg-card/70 text-muted-foreground"
-            }`}
-            onClick={() => {
-              setFilter("all");
-              setActivePinId(null);
-            }}
-          >
-            All Days
-          </button>
-          {days.map((day) => (
-            <button
-              key={day.id}
-              type="button"
-              className={`rounded-full border px-4 py-2 text-sm ${
-                filter === day.dayNumber
-                  ? "border-primary/30 bg-primary/10 text-primary"
-                  : "border-border/70 bg-card/70 text-muted-foreground"
-              }`}
-              onClick={() => {
-                setFilter(day.dayNumber);
-                setActivePinId(null);
-              }}
-              onDoubleClick={() => router.push(`/app/days/${day.date}`)}
-            >
-              {formatDateShort(day.date)}
-            </button>
-          ))}
-        </div>
-
         <Card className="rounded-[1.75rem] border border-border/70 bg-card/85">
           <CardContent className="space-y-4 py-5">
             <div className="flex items-start justify-between gap-3">
@@ -627,9 +614,46 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                   {filteredPins.length} stop{filteredPins.length === 1 ? "" : "s"}
                 </h3>
               </div>
-              <Badge className="bg-secondary/70 text-foreground">
-                {filter === "all" ? "Whole Trip" : `Day ${filter}`}
-              </Badge>
+              <Select
+                value={filter === "all" ? "all" : String(filter)}
+                onValueChange={handleDayFilterChange}
+              >
+                <SelectTrigger className="h-auto max-w-full rounded-full border-0 bg-secondary px-4 py-2 text-base font-semibold text-foreground shadow-none hover:bg-secondary/80 focus-visible:ring-primary/20 data-[size=default]:h-auto">
+                  <SelectValue>
+                    {selectedFilterDay
+                      ? formatDateShort(selectedFilterDay.date)
+                      : "All Days"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent
+                  align="end"
+                  alignItemWithTrigger={false}
+                  className="max-h-72 min-w-64 overflow-y-auto"
+                >
+                  <SelectItem
+                    value="all"
+                    className="hover:cursor-pointer hover:bg-accent/10 focus:bg-accent/10 focus:text-foreground"
+                  >
+                    All Days
+                  </SelectItem>
+                  {days.map((day) => (
+                    <SelectItem
+                      key={day.id}
+                      value={String(day.dayNumber)}
+                      className="hover:cursor-pointer hover:bg-accent/10 focus:bg-accent/10 focus:text-foreground"
+                    >
+                      <span className="flex min-w-0 flex-col items-start gap-0.5">
+                        <span className="font-medium">
+                          Day {day.dayNumber} · {formatDateShort(day.date)}
+                        </span>
+                        <span className="max-w-56 truncate text-xs text-muted-foreground">
+                          {day.title}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="rounded-[1.35rem] border border-border/70 bg-secondary/35 p-3">
@@ -716,6 +740,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                     key={pin.id}
                     type="button"
                     onClick={() => handlePinSelection(pin.id)}
+                    onDoubleClick={() => router.push(getPinDayHref(pin))}
                     className={`w-full rounded-[1.35rem] border p-4 text-left transition ${
                       isRouteSelected
                         ? "border-sky-400/45 bg-sky-500/10 shadow-[0_14px_30px_rgba(56,189,248,0.12)]"
@@ -784,7 +809,11 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <MapFlyTo center={flyTarget.center} zoom={flyTarget.zoom} />
+            <MapFlyTo
+              center={flyTarget.center}
+              placement={flyTarget.placement}
+              zoom={flyTarget.zoom}
+            />
 
             {route.length > 1 ? (
               <Polyline positions={route} color="#f59e0b" weight={2} opacity={0.75} />
@@ -855,6 +884,13 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
             getDayPins(day).map((pin) => (
               <Marker
                 key={pin.id}
+                ref={(marker) => {
+                  if (marker) {
+                    markerRefs.current.set(pin.id, marker);
+                  } else {
+                    markerRefs.current.delete(pin.id);
+                  }
+                }}
                 icon={getCategoryLeafletIcon(pin.category)}
                 position={[pin.lat, pin.lng]}
                 eventHandlers={{
@@ -950,6 +986,7 @@ export function TripMapLeaflet({ days }: { days: DaySummary[] }) {
                       data-pin-id={pin.id}
                       type="button"
                       onClick={() => handlePinSelection(pin.id)}
+                      onDoubleClick={() => router.push(getPinDayHref(pin))}
                       className={`w-[calc(100vw-12rem)] min-w-[10.25rem] max-w-[11.5rem] shrink-0 snap-center rounded-[1.2rem] border px-3 py-2.5 text-left shadow-[0_16px_30px_rgba(28,31,46,0.12)] backdrop-blur-xl transition ${
                         isRouteSelected
                           ? "border-sky-400/55 bg-sky-100"

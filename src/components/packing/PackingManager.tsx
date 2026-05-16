@@ -19,12 +19,29 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { DaySummary } from "@/lib/types";
 import type { PackingItem as PackingItemType } from "@/db/schema";
 
 type FilterMode = "all" | "not-packed" | "essential";
+
+const DEFAULT_PACKING_CATEGORIES = [
+  "documents",
+  "electronics",
+  "clothing",
+  "gear",
+  "food",
+  "toiletries",
+  "other",
+];
 
 const defaultForm = {
   name: "",
@@ -48,6 +65,16 @@ function getPackingForm(initialItem: PackingItemType | null) {
         notes: initialItem.notes ?? "",
       }
     : defaultForm;
+}
+
+function formatCategoryLabel(category: string) {
+  return category
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function isString(value: string | null | undefined): value is string {
+  return Boolean(value);
 }
 
 export function PackingManager({
@@ -90,6 +117,16 @@ export function PackingManager({
   const packedCount = items.filter((item) => Boolean(item.isPacked)).length;
   const selectedDayIndex =
     dayFilter === "all" ? null : days.findIndex((day) => String(day.id) === dayFilter);
+  const packingCategories = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...DEFAULT_PACKING_CATEGORIES,
+          ...items.map((item) => item.category).filter(isString),
+        ])
+      ).sort((a, b) => formatCategoryLabel(a).localeCompare(formatCategoryLabel(b))),
+    [items]
+  );
 
   async function upsertItem(payload: Record<string, unknown>) {
     const response = await fetch(
@@ -302,6 +339,7 @@ export function PackingManager({
             if (!open) setEditingItem(null);
           }}
           days={days}
+          categories={packingCategories}
           initialItem={editingItem}
           onSubmit={(payload) => void upsertItem(payload)}
         />
@@ -314,16 +352,26 @@ function PackingItemDialog({
   open,
   onOpenChange,
   days,
+  categories,
   initialItem,
   onSubmit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   days: DaySummary[];
+  categories: string[];
   initialItem: PackingItemType | null;
   onSubmit: (payload: Record<string, unknown>) => void;
 }) {
   const [form, setForm] = useState(() => getPackingForm(initialItem));
+  const categoryOptions = useMemo(
+    () =>
+      Array.from(new Set([...categories, form.category].filter(isString))).sort((a, b) =>
+        formatCategoryLabel(a).localeCompare(formatCategoryLabel(b))
+      ),
+    [categories, form.category]
+  );
+  const selectedDay = days.find((day) => String(day.id) === form.daySpecific);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -352,11 +400,35 @@ function PackingItemDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="packing-category">Category</Label>
-              <Input
-                id="packing-category"
+              <Select
                 value={form.category}
-                onChange={(event) => setForm({ ...form, category: event.target.value })}
-              />
+                onValueChange={(category) => {
+                  if (category) {
+                    setForm({ ...form, category });
+                  }
+                }}
+              >
+                <SelectTrigger
+                  id="packing-category"
+                  className="w-full hover:cursor-pointer"
+                >
+                  <SelectValue>{formatCategoryLabel(form.category)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent
+                  alignItemWithTrigger={false}
+                  className="max-h-56 overflow-y-auto"
+                >
+                  {categoryOptions.map((category) => (
+                    <SelectItem
+                      key={category}
+                      value={category}
+                      className="hover:cursor-pointer hover:bg-accent/10 focus:bg-accent/10 focus:text-foreground"
+                    >
+                      {formatCategoryLabel(category)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="packing-quantity">Quantity</Label>
@@ -372,19 +444,42 @@ function PackingItemDialog({
           </div>
           <div className="grid gap-2">
             <Label htmlFor="packing-day">Day Specific</Label>
-            <select
-              id="packing-day"
-              className="h-8 rounded-lg border border-input bg-input/30 px-2.5 text-sm"
-              value={form.daySpecific}
-              onChange={(event) => setForm({ ...form, daySpecific: event.target.value })}
+            <Select
+              value={form.daySpecific || "whole-trip"}
+              onValueChange={(daySpecific) => {
+                setForm({
+                  ...form,
+                  daySpecific:
+                    !daySpecific || daySpecific === "whole-trip" ? "" : daySpecific,
+                });
+              }}
             >
-              <option value="">Whole trip</option>
-              {days.map((day) => (
-                <option key={day.id} value={day.id}>
-                  Day {day.dayNumber}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="packing-day" className="w-full hover:cursor-pointer">
+                <SelectValue>
+                  {selectedDay ? `Day ${selectedDay.dayNumber}` : "Whole trip"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent
+                alignItemWithTrigger={false}
+                className="max-h-56 overflow-y-auto"
+              >
+                <SelectItem
+                  value="whole-trip"
+                  className="hover:cursor-pointer hover:bg-accent/10 focus:bg-accent/10 focus:text-foreground"
+                >
+                  Whole trip
+                </SelectItem>
+                {days.map((day) => (
+                  <SelectItem
+                    key={day.id}
+                    value={String(day.id)}
+                    className="hover:cursor-pointer hover:bg-accent/10 focus:bg-accent/10 focus:text-foreground"
+                  >
+                    Day {day.dayNumber}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="packing-notes">Notes</Label>
@@ -413,7 +508,7 @@ function PackingItemDialog({
             />
             Already packed
           </label>
-          <DialogFooter className="gap-2 bg-transparent p-0">
+          <DialogFooter className="gap-2 bg-transparent p-0 pt-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
