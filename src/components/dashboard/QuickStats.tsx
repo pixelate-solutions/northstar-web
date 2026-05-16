@@ -2,7 +2,7 @@ import { CalendarRange, DollarSign, Package, Route } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import type { DashboardStats } from "@/lib/types";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, pluralize } from "@/lib/utils";
 
 export function QuickStats({ stats }: { stats: DashboardStats }) {
   const items = [
@@ -12,7 +12,7 @@ export function QuickStats({ stats }: { stats: DashboardStats }) {
       icon: CalendarRange,
     },
     {
-      label: "events on this day",
+      label: `${pluralize(stats.eventsToday, "event")} on this day`,
       value: stats.eventsToday.toString(),
       icon: Route,
     },

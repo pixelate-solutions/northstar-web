@@ -1,5 +1,6 @@
 import type { AppDataBundle, DashboardStats } from "@/lib/types";
 import { getTripStatus } from "@/lib/trip-data";
+import { pluralize } from "@/lib/utils";
 
 export function getDashboardStats(
   bundle: AppDataBundle,
@@ -28,7 +29,7 @@ export function getDashboardStats(
   if (status.status === "before") {
     return {
       daysUntilOrIntoTrip: status.daysUntil,
-      statLabel: "days until departure",
+      statLabel: `${pluralize(status.daysUntil, "day")} until departure`,
       eventsToday: selectedDay?.eventCount ?? 0,
       packingPercent,
       totalSpent,
@@ -39,7 +40,7 @@ export function getDashboardStats(
   if (status.status === "during") {
     return {
       daysUntilOrIntoTrip: status.dayNumber,
-      statLabel: "days into the trip",
+      statLabel: `${pluralize(status.dayNumber, "day")} into the trip`,
       eventsToday: selectedDay?.eventCount ?? 0,
       packingPercent,
       totalSpent,
@@ -49,7 +50,7 @@ export function getDashboardStats(
 
   return {
     daysUntilOrIntoTrip: bundle.days.length,
-    statLabel: "days completed",
+    statLabel: `${pluralize(bundle.days.length, "day")} completed`,
     eventsToday: selectedDay?.eventCount ?? 0,
     packingPercent,
     totalSpent,

@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { Reminder } from "@/db/schema";
 import { getActiveTripDates, getTripStatus } from "@/lib/trip-data";
+import { pluralize } from "@/lib/utils";
 
 interface CountdownBannerProps {
   overdueCount?: number;
@@ -20,10 +21,16 @@ function getDueDateLabel(dueDate: string): { label: string; overdue: boolean } {
   today.setHours(0, 0, 0, 0);
   const due = new Date(`${dueDate}T00:00:00`);
   const diff = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  if (diff < 0) return { label: `${Math.abs(diff)}d overdue`, overdue: true };
+  if (diff < 0) {
+    const overdueDays = Math.abs(diff);
+    return {
+      label: `${overdueDays} ${pluralize(overdueDays, "day")} overdue`,
+      overdue: true,
+    };
+  }
   if (diff === 0) return { label: "Due today", overdue: false };
   if (diff === 1) return { label: "Due tomorrow", overdue: false };
-  return { label: `In ${diff} days`, overdue: false };
+  return { label: `In ${diff} ${pluralize(diff, "day")}`, overdue: false };
 }
 
 function isReminderOverdue(dueDate: string) {
@@ -76,9 +83,9 @@ export function CountdownBanner({
 
   let message = "Your trip workspace is ready";
   if (status.status === "before") {
-    message = `${status.daysUntil} days until departure`;
+    message = `${status.daysUntil} ${pluralize(status.daysUntil, "day")} until departure`;
   } else if (status.status === "during") {
-    message = `Day ${status.dayNumber} of ${dates.length} in the trip`;
+    message = `Day ${status.dayNumber} of ${dates.length} ${pluralize(dates.length, "day")} in the trip`;
   }
 
   return (
@@ -95,7 +102,7 @@ export function CountdownBanner({
                 <TooltipTrigger
                   render={
                     <span className="inline-flex items-center rounded-full border border-white/50 bg-white/55 px-2.5 py-1 text-xs font-medium text-red-600 shadow-[0_8px_22px_rgba(120,126,182,0.08)] backdrop-blur-xl hover:cursor-pointer">
-                      {overdueCount} reminders overdue
+                      {overdueCount} {pluralize(overdueCount, "reminder")} overdue
                     </span>
                   }
                 />
@@ -113,7 +120,7 @@ export function CountdownBanner({
                 <TooltipTrigger
                   render={
                     <span className="inline-flex items-center rounded-full border border-white/50 bg-white/55 px-2.5 py-1 text-xs font-medium text-yellow-700 shadow-[0_8px_22px_rgba(120,126,182,0.08)] backdrop-blur-xl hover:cursor-pointer">
-                      {dueSoonCount} reminders due soon
+                      {dueSoonCount} {pluralize(dueSoonCount, "reminder")} due soon
                     </span>
                   }
                 />

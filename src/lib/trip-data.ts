@@ -1,3 +1,5 @@
+import { pluralize } from "@/lib/utils";
+
 export type TripStatus =
   | { status: "before"; daysUntil: number }
   | { status: "during"; dayNumber: number; currentDate: string }
@@ -95,7 +97,7 @@ export function getCountdownLabel(
   const status = getTripStatus(now, dates, options);
 
   if (status.status === "before") {
-    return `${status.daysUntil} days until departure`;
+    return `${status.daysUntil} ${pluralize(status.daysUntil, "day")} until departure`;
   }
 
   if (status.status === "during") {

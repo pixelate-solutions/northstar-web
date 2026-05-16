@@ -66,12 +66,26 @@ export function formatDateMedium(dateStr: string): string {
   return formatted.replace(/, ([A-Za-z]{3}) /, ", $1. ");
 }
 
+export function pluralize(
+  count: number,
+  singular: string,
+  plural = `${singular}s`
+): string {
+  return Math.abs(count) === 1 ? singular : plural;
+}
+
+function normalizeTimeForDateTime(time: string): string {
+  const [hours = "00", minutes = "00", seconds = "00"] = time.split(":");
+  return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}:${seconds.padStart(2, "0")}`;
+}
+
 export function getEventDateTime(
   dateStr: string,
   time: string | null | undefined
 ): Date | null {
   if (!time) return null;
-  return new Date(`${dateStr}T${time}:00`);
+  const eventDateTime = new Date(`${dateStr}T${normalizeTimeForDateTime(time)}`);
+  return Number.isNaN(eventDateTime.getTime()) ? null : eventDateTime;
 }
 
 export function getEventDistanceLabel(
@@ -86,13 +100,13 @@ export function getEventDistanceLabel(
   if (diffMs <= 0) return null;
 
   const minutes = Math.round(diffMs / 60000);
-  if (minutes < 60) return `Coming up in ${minutes} min`;
+  if (minutes < 60) return `Coming up in ${minutes} ${pluralize(minutes, "min")}`;
 
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `Coming up in ${hours} hr`;
 
   const days = Math.round(hours / 24);
-  return `Coming up in ${days} day${days === 1 ? "" : "s"}`;
+  return `Coming up in ${days} ${pluralize(days, "day")}`;
 }
 
 export function timeToMinutes(time: string | null | undefined): number {

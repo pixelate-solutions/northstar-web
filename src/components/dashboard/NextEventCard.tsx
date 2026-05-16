@@ -12,8 +12,15 @@ import {
   getEventDistanceLabel,
   isEventActive,
   minutesUntilEvent,
+  pluralize,
   timeToMinutes,
 } from "@/lib/utils";
+
+function getFallbackDistanceLabel(startTime: string | null, now: Date): string | null {
+  const minutes = minutesUntilEvent(startTime, now);
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  return `Coming up in ${minutes} ${pluralize(minutes, "min")}`;
+}
 
 function EventSummary({
   event,
@@ -29,7 +36,7 @@ function EventSummary({
   const distanceLabel =
     tone === "next"
       ? getEventDistanceLabel(selectedDate, event.startTime, now) ??
-        `Coming up in ${minutesUntilEvent(event.startTime, now)} min`
+        getFallbackDistanceLabel(event.startTime, now)
       : null;
 
   return (
@@ -69,7 +76,7 @@ function EventSummary({
         }`}
       >
         <Zap className="size-4 shrink-0" />
-        {tone === "current" ? "Happening now" : distanceLabel}
+        {tone === "current" ? "Happening now" : distanceLabel ?? "Coming up"}
       </div>
     </div>
   );
