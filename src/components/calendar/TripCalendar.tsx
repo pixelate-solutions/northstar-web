@@ -91,8 +91,9 @@ export function TripCalendar({
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<TripCalendarEvent | null>(null);
   const [desktopView, setDesktopView] = useState<View>("month");
+  const [mobileView, setMobileView] = useState<View>("agenda");
   const [calendarDate, setCalendarDate] = useState(() => getInitialCalendarDate(days));
-  const view = isMobileViewport ? "agenda" : desktopView;
+  const view = isMobileViewport ? mobileView : desktopView;
 
   const calendarEvents = useMemo<TripCalendarEvent[]>(
     () =>
@@ -146,7 +147,9 @@ export function TripCalendar({
             titleAccessor={(event) => String(event.title ?? "")}
             view={view}
             onView={(nextView) => {
-              if (!isMobileViewport) {
+              if (isMobileViewport) {
+                setMobileView(nextView);
+              } else {
                 setDesktopView(nextView);
               }
             }}
