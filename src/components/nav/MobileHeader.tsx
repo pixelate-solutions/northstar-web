@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, Menu, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { ChevronDown, Download, Loader2, Menu, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
+import { downloadTripExport } from "@/components/trips/exportTrip";
 import { TripSharingDialog } from "@/components/trips/TripSharingDialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -72,6 +73,7 @@ export function MobileHeader({
   const [deletingTripId, setDeletingTripId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState(tripName);
   const [renamingTrip, setRenamingTrip] = useState(false);
+  const [exportingTrip, setExportingTrip] = useState(false);
   const resolvedCountdownLabel = timeZone
     ? getCountdownLabel(tripDates, new Date(), { timeZone })
     : countdownLabel;
@@ -208,6 +210,18 @@ export function MobileHeader({
     router.refresh();
   }
 
+  async function handleExportTrip() {
+    if (exportingTrip) return;
+    setExportingTrip(true);
+    try {
+      await downloadTripExport();
+    } catch {
+      toast.error("Unable to export trip.");
+    } finally {
+      setExportingTrip(false);
+    }
+  }
+
   return (
     <>
       <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b border-white/40 bg-white/72 px-4 shadow-[0_12px_40px_rgba(18,43,74,0.08)] backdrop-blur-xl lg:hidden">
@@ -336,6 +350,14 @@ export function MobileHeader({
                   ) : null}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
+                    onClick={handleExportTrip}
+                    disabled={exportingTrip}
+                    className="cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground"
+                  >
+                    <Download className="size-4" />
+                    <span>{exportingTrip ? "Exporting..." : "Export Trip (HTML)"}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
                     onClick={() => setCreateDialogOpen(true)}
                     className="cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground"
                   >
@@ -344,6 +366,17 @@ export function MobileHeader({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <button
+                type="button"
+                onClick={handleExportTrip}
+                disabled={exportingTrip}
+                className="inline-flex shrink-0 items-center justify-center rounded-[1.25rem] border border-white/45 bg-white/70 px-4 text-muted-foreground shadow-[0_12px_28px_rgba(18,43,74,0.08)] transition hover:bg-white/82 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-60"
+                aria-label="Export trip as HTML"
+                title="Export trip as HTML"
+              >
+                {exportingTrip ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+              </button>
 
               {canEditActiveTrip ? (
                 <button

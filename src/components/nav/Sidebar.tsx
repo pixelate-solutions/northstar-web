@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
-import { ChevronDown, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { ChevronDown, Download, Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { downloadTripExport } from "@/components/trips/exportTrip";
 import { TripSharingDialog } from "@/components/trips/TripSharingDialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -91,6 +92,7 @@ export function Sidebar({
   const [deletingTripId, setDeletingTripId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState(tripName);
   const [renamingTrip, setRenamingTrip] = useState(false);
+  const [exportingTrip, setExportingTrip] = useState(false);
   const bookedLabel = formatBookedAmount(totalBooked, collapsed);
   const resolvedCountdownLabel = timeZone
     ? getCountdownLabel(tripDates, new Date(), { timeZone })
@@ -205,6 +207,18 @@ export function Sidebar({
     router.refresh();
   }
 
+  async function handleExportTrip() {
+    if (exportingTrip) return;
+    setExportingTrip(true);
+    try {
+      await downloadTripExport();
+    } catch {
+      toast.error("Unable to export trip.");
+    } finally {
+      setExportingTrip(false);
+    }
+  }
+
   return (
     <SidebarShell>
       <SidebarHeader className={cn(collapsed ? "px-3 pt-5" : "px-5 pt-5")}>
@@ -294,6 +308,14 @@ export function Sidebar({
                   </DropdownMenuItem>
                 ) : null}
                 <DropdownMenuItem
+                  onClick={handleExportTrip}
+                  disabled={exportingTrip}
+                  className="cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground sm:rounded-[0.9rem] sm:px-2.5 sm:py-2.5"
+                >
+                  <Download className="size-4" />
+                  <span>{exportingTrip ? "Exporting..." : "Export Trip (HTML)"}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   onClick={() => setCreateDialogOpen(true)}
                   className="cursor-pointer rounded-[1rem] px-3 py-3 text-foreground hover:bg-slate-100/80 hover:text-foreground focus:bg-slate-100/80 focus:text-foreground sm:rounded-[0.9rem] sm:px-2.5 sm:py-2.5"
                 >
@@ -302,6 +324,17 @@ export function Sidebar({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            <button
+              type="button"
+              onClick={handleExportTrip}
+              disabled={exportingTrip}
+              className="inline-flex shrink-0 items-center justify-center rounded-[1.25rem] border border-white/40 bg-white/32 px-3 text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] backdrop-blur-xl transition hover:bg-white/42 hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-60"
+              aria-label="Export trip as HTML"
+              title="Export trip as HTML"
+            >
+              {exportingTrip ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            </button>
 
             {canEditActiveTrip ? (
               <button
