@@ -755,7 +755,9 @@ const MAP_SCRIPT = `
   function makeMap(el){
     el.innerHTML = "";
     var map = L.map(el,{scrollWheelZoom:false});
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
+    // Pages opened from file:// send no Referer, which OSM and CARTO answer with blocked/watermarked
+    // tiles. Esri's public basemap serves them normally.
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
     return map;
   }
   function fit(map, points){
@@ -908,7 +910,7 @@ export function renderTripExportHtml(bundle: AppDataBundle, options: TripExportO
     ${renderReminders(reminders, days, today)}
   </section>
 
-  <p class="footer">Exported from ${escapeHtml(product.name)} on ${escapeHtml(exportedAt)}. Maps © OpenStreetMap contributors.</p>
+  <p class="footer">Exported from ${escapeHtml(product.name)} on ${escapeHtml(exportedAt)}. Map tiles © Esri and OpenStreetMap contributors.</p>
 </main>
 <script id="trip-map-data" type="application/json">${jsonForScript(mapData)}</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
