@@ -3,7 +3,9 @@
 import { Check, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { useConfirm } from "@/components/ns/overlay";
 import { useTrip } from "@/components/trip/TripProvider";
+import { useCheckedOrder, useFlip } from "@/hooks/useCheckedOrder";
 import type { PackingJson, ReminderJson } from "@/lib/client-types";
 import { shortDate, todayIso } from "@/lib/format";
 
@@ -51,8 +53,9 @@ function AddRow({ placeholder, onAdd, children }: { placeholder: string; onAdd: 
   );
 }
 
-function ReminderRow({ reminder }: { reminder: ReminderJson }) {
+function ReminderRow({ reminder, onToggled }: { reminder: ReminderJson; onToggled: (id: number, previous: boolean) => void }) {
   const { updateReminder, deleteReminder, canEdit, bundle } = useTrip();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(reminder.title);
   const [due, setDue] = useState(reminder.dueDate ?? "");
@@ -75,7 +78,11 @@ function ReminderRow({ reminder }: { reminder: ReminderJson }) {
       >
         <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} className="h-10 min-w-0 flex-1 rounded-[10px] bg-surface px-3 text-[15px] font-medium" />
         <input type="date" value={due} onChange={(e) => setDue(e.target.value)} className="h-10 rounded-[10px] bg-surface px-2 font-mono text-[13px]" />
-        <button type="button" aria-label="Delete" onClick={() => void deleteReminder(reminder.id)} className="flex h-10 w-10 items-center justify-center rounded-full text-stop hover:bg-surface">
+        <button type="button" aria-label="Delete" onClick={async () => {
+            if (!(await confirm(`Delete ${reminder.title}?`))) return;
+            setEditing(false);
+            void deleteReminder(reminder.id);
+          }} className="flex h-10 w-10 items-center justify-center rounded-full text-stop hover:bg-surface">
           <Trash2 size={16} />
         </button>
         <button type="submit" className="h-10 rounded-full bg-lane px-4 text-[14px] font-bold">Done</button>
@@ -89,7 +96,10 @@ function ReminderRow({ reminder }: { reminder: ReminderJson }) {
         checked={Boolean(reminder.isDone)}
         disabled={!canEdit}
         label={reminder.title}
-        onChange={() => void updateReminder(reminder.id, { isDone: !reminder.isDone })}
+        onChange={() => {
+          onToggled(reminder.id, Boolean(reminder.isDone));
+          void updateReminder(reminder.id, { isDone: !reminder.isDone });
+        }}
       />
       <button
         type="button"
@@ -108,8 +118,9 @@ function ReminderRow({ reminder }: { reminder: ReminderJson }) {
   );
 }
 
-function PackingRow({ item }: { item: PackingJson }) {
+function PackingRow({ item, onToggled }: { item: PackingJson; onToggled: (id: number, previous: boolean) => void }) {
   const { updatePacking, deletePacking, canEdit } = useTrip();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [quantity, setQuantity] = useState(String(item.quantity ?? 1));
@@ -136,7 +147,11 @@ function PackingRow({ item }: { item: PackingJson }) {
           className="h-10 w-14 rounded-[10px] bg-surface px-2 text-center font-mono text-[13px]"
           aria-label="Quantity"
         />
-        <button type="button" aria-label="Delete" onClick={() => void deletePacking(item.id)} className="flex h-10 w-10 items-center justify-center rounded-full text-stop hover:bg-surface">
+        <button type="button" aria-label="Delete" onClick={async () => {
+            if (!(await confirm(`Delete ${item.name}?`))) return;
+            setEditing(false);
+            void deletePacking(item.id);
+          }} className="flex h-10 w-10 items-center justify-center rounded-full text-stop hover:bg-surface">
           <Trash2 size={16} />
         </button>
         <button type="submit" className="h-10 rounded-full bg-lane px-4 text-[14px] font-bold">Done</button>
@@ -146,7 +161,15 @@ function PackingRow({ item }: { item: PackingJson }) {
 
   return (
     <div className="flex h-[52px] items-center gap-3.5 border-b border-line px-3.5">
-      <Checkbox checked={Boolean(item.isPacked)} disabled={!canEdit} label={item.name} onChange={() => void updatePacking(item.id, { isPacked: !item.isPacked })} />
+      <Checkbox
+        checked={Boolean(item.isPacked)}
+        disabled={!canEdit}
+        label={item.name}
+        onChange={() => {
+          onToggled(item.id, Boolean(item.isPacked));
+          void updatePacking(item.id, { isPacked: !item.isPacked });
+        }}
+      />
       <button
         type="button"
         disabled={!canEdit}
@@ -162,13 +185,20 @@ function PackingRow({ item }: { item: PackingJson }) {
 
 function TodoColumn({ showDone }: { showDone: boolean }) {
   const { bundle, addReminder, canEdit } = useTrip();
+  const { toggled, compareChecked } = useCheckedOrder();
   const reminders = useMemo(
     () =>
       [...bundle.reminders]
         .filter((r) => showDone || !r.isDone)
-        .sort((a, b) => Number(Boolean(a.isDone)) - Number(Boolean(b.isDone)) || (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") || a.title.localeCompare(b.title)),
-    [bundle.reminders, showDone]
+        .sort(
+          (a, b) =>
+            compareChecked({ id: a.id, checked: Boolean(a.isDone) }, { id: b.id, checked: Boolean(b.isDone) }) ||
+            (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") ||
+            a.id - b.id
+        ),
+    [bundle.reminders, showDone, compareChecked]
   );
+  const flipRef = useFlip<HTMLDivElement>(reminders.map((r) => r.id).join(","));
   const left = bundle.reminders.filter((r) => !r.isDone).length;
   return (
     <div className="flex min-w-0 flex-1 flex-col">
@@ -177,9 +207,13 @@ function TodoColumn({ showDone }: { showDone: boolean }) {
         <span className="font-mono text-[13px] font-medium text-muted">{left} left</span>
       </div>
       {canEdit ? <AddRow placeholder="Add a to-do" onAdd={(title) => void addReminder({ title })} /> : null}
-      {reminders.map((reminder) => (
-        <ReminderRow key={reminder.id} reminder={reminder} />
-      ))}
+      <div ref={flipRef} className="flex flex-col">
+        {reminders.map((reminder) => (
+          <div key={reminder.id} data-flip-id={reminder.id} className="bg-white">
+            <ReminderRow reminder={reminder} onToggled={toggled} />
+          </div>
+        ))}
+      </div>
       {!reminders.length ? <p className="px-3.5 py-6 text-[15px] font-medium text-muted">{showDone ? "Nothing to do yet." : "All done."}</p> : null}
     </div>
   );
@@ -187,6 +221,7 @@ function TodoColumn({ showDone }: { showDone: boolean }) {
 
 function PackingColumn({ showDone }: { showDone: boolean }) {
   const { bundle, addPacking, canEdit } = useTrip();
+  const { toggled, compareChecked } = useCheckedOrder();
   const [category, setCategory] = useState("other");
   const groups = useMemo(() => {
     const visible = bundle.packingItems.filter((item) => showDone || !item.isPacked);
@@ -197,8 +232,17 @@ function PackingColumn({ showDone }: { showDone: boolean }) {
     }
     return [...map.entries()]
       .sort(([a], [b]) => (a === "other" ? 1 : b === "other" ? -1 : a.localeCompare(b)))
-      .map(([key, items]) => [key, items.sort((x, y) => Number(Boolean(x.isPacked)) - Number(Boolean(y.isPacked)) || x.name.localeCompare(y.name))] as const);
-  }, [bundle.packingItems, showDone]);
+      .map(
+        ([key, items]) =>
+          [
+            key,
+            items.sort(
+              (x, y) => compareChecked({ id: x.id, checked: Boolean(x.isPacked) }, { id: y.id, checked: Boolean(y.isPacked) }) || x.name.localeCompare(y.name)
+            ),
+          ] as const
+      );
+  }, [bundle.packingItems, showDone, compareChecked]);
+  const flipRef = useFlip<HTMLDivElement>(groups.map(([, items]) => items.map((item) => item.id).join(",")).join("|"));
   const packed = bundle.packingItems.filter((item) => item.isPacked).length;
   const categories = Array.from(new Set([...PACKING_CATEGORIES, ...bundle.packingItems.map((item) => item.category)]));
 
@@ -226,14 +270,18 @@ function PackingColumn({ showDone }: { showDone: boolean }) {
           </select>
         </AddRow>
       ) : null}
-      {groups.map(([key, items]) => (
-        <div key={key} className="flex flex-col">
-          <div className="px-3.5 pb-1 pt-4 text-[12px] font-bold uppercase tracking-[0.08em] text-muted">{key}</div>
-          {items.map((item) => (
-            <PackingRow key={item.id} item={item} />
-          ))}
-        </div>
-      ))}
+      <div ref={flipRef} className="flex flex-col">
+        {groups.map(([key, items]) => (
+          <div key={key} className="flex flex-col">
+            <div className="px-3.5 pb-1 pt-4 text-[12px] font-bold uppercase tracking-[0.08em] text-muted">{key}</div>
+            {items.map((item) => (
+              <div key={item.id} data-flip-id={item.id} className="bg-white">
+                <PackingRow item={item} onToggled={toggled} />
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
       {!groups.length ? <p className="px-3.5 py-6 text-[15px] font-medium text-muted">{showDone ? "Nothing to pack yet." : "All packed."}</p> : null}
     </div>
   );

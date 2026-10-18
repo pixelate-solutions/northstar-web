@@ -6,7 +6,13 @@ import { Check } from "lucide-react";
 
 import { CategoryPill } from "@/components/trip/category";
 import type { EventJson } from "@/lib/client-types";
-import { clock, money } from "@/lib/format";
+import { displayClock, money } from "@/lib/format";
+import { usePrefs } from "@/lib/prefs";
+
+/** Width of the time column (12-hour times need more room). */
+export function timeColumnClass(use24Hour: boolean) {
+  return use24Hour ? "w-10 sm:w-11" : "w-[62px] sm:w-[68px]";
+}
 
 export function StopRow({
   event,
@@ -25,6 +31,7 @@ export function StopRow({
 }) {
   const { setNodeRef, transform, transition, isDragging, attributes, listeners } = useSortable({ id: event.id, disabled: !draggable });
   const style = { transform: CSS.Transform.toString(transform), transition };
+  const [{ use24Hour }] = usePrefs();
   const cost = event.cost !== null && Number(event.cost) > 0 ? money(event.cost) : null;
 
   return (
@@ -38,8 +45,10 @@ export function StopRow({
           highlighted ? "bg-lane-soft" : selected ? "bg-surface" : "hover:bg-surface"
         } ${isDragging ? "bg-white shadow-pop" : ""}`}
       >
-        <span className={`w-10 shrink-0 font-mono text-[12px] sm:w-11 sm:text-[13px] ${highlighted ? "font-bold text-ink" : "font-medium text-muted"}`}>
-          {clock(event.startTime)}
+        <span
+          className={`shrink-0 whitespace-nowrap font-mono text-[12px] sm:text-[13px] ${timeColumnClass(use24Hour)} ${highlighted ? "font-bold text-ink" : "font-medium text-muted"}`}
+        >
+          {displayClock(event.startTime, use24Hour)}
         </span>
         <span
           className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-semibold sm:h-7 sm:w-7 sm:text-[12px] ${
@@ -60,9 +69,10 @@ export function StopRow({
 }
 
 export function Leg({ label, drive }: { label: string | null; drive?: boolean }) {
+  const [{ use24Hour }] = usePrefs();
   return (
     <div className="flex h-[22px] items-center gap-3 px-3 sm:gap-3.5">
-      <span className="w-10 shrink-0 sm:w-11" />
+      <span className={`shrink-0 ${timeColumnClass(use24Hour)}`} />
       <span className="flex w-6 shrink-0 justify-center sm:w-7">
         <span className={`h-[22px] ${drive ? "w-[3px] bg-lane" : "w-[2px] bg-line"}`} />
       </span>

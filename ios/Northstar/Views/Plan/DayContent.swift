@@ -4,11 +4,13 @@ import SwiftUI
 struct DayContent: View {
     @Environment(TripStore.self) private var store
     let day: Day
-    @Binding var reordering: Bool
+    @Binding var focusedLeg: Int?
     let onEditStop: (Stop) -> Void
     let onAddStop: () -> Void
     let onEditDay: () -> Void
     @State private var routes = RouteService.shared
+    @State private var pendingDelete: Stop?
+    @AppStorage(Prefs.use24HourKey) private var use24Hour = false
 
     private var stops: [Stop] { TripStore.sortedStops(day.events) }
 
@@ -41,15 +43,7 @@ struct DayContent: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("DAY \(day.dayNumber) · \(Fmt.dayLabel(day.date))").font(NS.mono(12)).foregroundStyle(NS.muted)
-                        Spacer()
-                        if store.canEdit && stops.count > 1 {
-                            Button(reordering ? "Done" : "Reorder") { withAnimation { reordering.toggle() } }
-                                .font(NS.sans(14, .semibold))
-                                .foregroundStyle(NS.ink)
-                        }
-                    }
+                    Text("DAY \(day.dayNumber) · \(Fmt.dayLabel(day.date))").font(NS.mono(12)).foregroundStyle(NS.muted)
                     Button(action: onEditDay) {
                         Text(day.displayTitle).font(NS.display(32)).tracking(-1.1).foregroundStyle(NS.ink).multilineTextAlignment(.leading)
                     }
@@ -73,28 +67,35 @@ struct DayContent: View {
             Section {
                 ForEach(Array(stops.enumerated()), id: \.element.id) { index, stop in
                     VStack(spacing: 0) {
-                        StopRowView(stop: stop, number: index + 1, highlighted: store.highlightedStopIds.contains(stop.id))
+                        StopRowView(stop: stop, number: index + 1, highlighted: store.highlightedStopIds.contains(stop.id), use24Hour: use24Hour)
                             .contentShape(Rectangle())
-                            .onTapGesture { if !reordering { onEditStop(stop) } }
-                        if index < stops.count - 1 && !reordering {
-                            LegView(leg: leg(after: index))
+                            .onTapGesture { onEditStop(stop) }
+                        if index < stops.count - 1 {
+                            let leg = leg(after: index)
+                            LegView(leg: leg, from: index + 1, focused: focusedLeg == stop.id, use24Hour: use24Hour)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    guard leg != nil else { return }
+                                    withAnimation(.easeInOut(duration: 0.2)) { focusedLeg = focusedLeg == stop.id ? nil : stop.id }
+                                }
                         }
                     }
                     .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
                     .listRowSeparator(.hidden)
-                    .swipeActions(edge: .trailing) {
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         if store.canEdit {
-                            Button(role: .destructive) { Task { await store.deleteStop(stop.id, dayId: day.id) } } label: { Label("Delete", systemImage: "trash") }
+                            Button { pendingDelete = stop } label: { Label("Delete", systemImage: "trash") }
+                                .tint(NS.stop)
                         }
                     }
                 }
-                .onMove { from, to in
+                .onMove(perform: store.canEdit ? { (from: IndexSet, to: Int) in
                     var ids = stops.map(\.id)
                     ids.move(fromOffsets: from, toOffset: to)
                     Task { await store.reorderStops(dayId: day.id, orderedIds: ids) }
-                }
+                } : nil)
 
-                if store.canEdit && !reordering {
+                if store.canEdit {
                     Button(action: onAddStop) {
                         HStack(spacing: 12) {
                             Spacer().frame(width: 40)
@@ -114,8 +115,14 @@ struct DayContent: View {
             }
         }
         .listStyle(.plain)
-        .environment(\.editMode, .constant(reordering ? .active : .inactive))
         .scrollContentBackground(.hidden)
+        .confirmationDialog("Delete \(pendingDelete?.title ?? "this stop")?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }), titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                if let stop = pendingDelete { Task { await store.deleteStop(stop.id, dayId: day.id) } }
+                pendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        }
     }
 }
 
@@ -123,13 +130,16 @@ struct StopRowView: View {
     let stop: Stop
     let number: Int
     let highlighted: Bool
+    var use24Hour = false
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(Fmt.clock(stop.startTime))
+            Text(Fmt.clock(stop.startTime, use24Hour: use24Hour))
                 .font(NS.mono(12, highlighted ? .bold : .medium))
                 .foregroundStyle(highlighted ? NS.ink : NS.muted)
-                .frame(width: 40, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(width: use24Hour ? 40 : 58, alignment: .leading)
             Text("\(number)")
                 .font(NS.mono(11, .semibold))
                 .foregroundStyle(highlighted ? NS.ink : .white)
@@ -139,7 +149,7 @@ struct StopRowView: View {
             Spacer(minLength: 4)
             Image(systemName: CategoryInfo.info(stop.category).symbol)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(NS.muted)
+                .foregroundStyle(CategoryInfo.color(stop.category))
             HStack(spacing: 3) {
                 if stop.booked { Image(systemName: "checkmark").font(.system(size: 11, weight: .heavy)) }
                 if let cost = stop.costValue { Text(Fmt.money(cost)).font(NS.mono(12, .semibold)) }
@@ -155,20 +165,32 @@ struct StopRowView: View {
 
 struct LegView: View {
     let leg: RouteLeg?
+    let from: Int
+    var focused = false
+    var use24Hour = false
+
     var body: some View {
         let drive = (leg?.duration ?? 0) > 30 * 60
         HStack(spacing: 12) {
-            Spacer().frame(width: 40)
-            Rectangle().fill(drive ? NS.lane : NS.line).frame(width: drive ? 3 : 2, height: 22).frame(width: 24)
+            Spacer().frame(width: use24Hour ? 40 : 58)
+            Rectangle().fill(focused || drive ? NS.lane : NS.line).frame(width: focused || drive ? 3 : 2, height: 26).frame(width: 24)
             if let leg {
-                Text(Fmt.duration(leg.duration) + (drive ? " drive" : ""))
-                    .font(NS.mono(12, drive ? .semibold : .medium))
-                    .foregroundStyle(drive ? NS.ink : NS.muted)
+                HStack(spacing: 6) {
+                    Text(Fmt.duration(leg.duration) + (drive ? " drive" : ""))
+                    if focused { Text("· \(Fmt.miles(leg.distance)) · \(from)→\(from + 1)") }
+                }
+                .font(NS.mono(12, focused || drive ? .semibold : .medium))
+                .foregroundStyle(focused || drive ? NS.ink : NS.muted)
+                .padding(.horizontal, focused ? 8 : 0)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(focused ? NS.laneSoft : .clear))
+                .accessibilityLabel("Route \(from) to \(from + 1)")
+                .accessibilityAddTraits(.isButton)
             }
             Spacer()
         }
         .padding(.horizontal, 12)
-        .frame(height: 22)
+        .frame(height: 28)
     }
 }
 

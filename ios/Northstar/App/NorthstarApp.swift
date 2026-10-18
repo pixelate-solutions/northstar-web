@@ -7,6 +7,7 @@ struct NorthstarApp: App {
     init() {
         let key = (Bundle.main.object(forInfoDictionaryKey: "ClerkPublishableKey") as? String) ?? ""
         Clerk.configure(publishableKey: key)
+        _ = Connectivity.shared
         APIClient.shared.tokenProvider = {
             try await Clerk.shared.auth.getToken()
         }
@@ -38,6 +39,7 @@ struct RootView: View {
             }
         }
         .onOpenURL { url in Task { try? await clerk.handle(url) } }
+        .onAppear { KeyboardDismisser.shared.install() }
     }
 }
 

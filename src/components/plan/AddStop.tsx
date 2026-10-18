@@ -4,8 +4,10 @@ import { Plus } from "lucide-react";
 import { useState } from "react";
 
 import { guessCategory, PlaceResults, usePlaceSearch, type PlaceResult } from "@/components/plan/PlaceSearch";
+import { timeColumnClass } from "@/components/plan/StopRow";
 import { useTrip } from "@/components/trip/TripProvider";
 import { parseClock } from "@/lib/format";
+import { usePrefs } from "@/lib/prefs";
 
 /** Splits "7:30p Dinner at X" into a time and the rest. */
 function splitLeadingTime(text: string) {
@@ -19,6 +21,7 @@ function splitLeadingTime(text: string) {
 
 export function AddStop({ dayId, near, onAdded }: { dayId: number; near: { lat: number; lng: number } | null; onAdded?: (eventId: number) => void }) {
   const { addEvent } = useTrip();
+  const [{ use24Hour }] = usePrefs();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -47,7 +50,7 @@ export function AddStop({ dayId, near, onAdded }: { dayId: number; near: { lat: 
         onClick={() => setEditing(true)}
         className="mt-1.5 flex h-[54px] w-full items-center gap-3 rounded-[12px] px-3 text-left transition hover:bg-surface sm:gap-3.5"
       >
-        <span className="w-10 shrink-0 sm:w-11" />
+        <span className={`shrink-0 ${timeColumnClass(use24Hour)}`} />
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-[1.5px] border-dashed border-[#B9B9B4]">
           <Plus size={14} strokeWidth={2.4} />
         </span>

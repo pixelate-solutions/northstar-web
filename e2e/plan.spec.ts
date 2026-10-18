@@ -38,11 +38,13 @@ test("add, edit, move, and delete a stop", async ({ page }) => {
 
   // Edit fields inline.
   await page.getByLabel("Notes").fill("Window table, conf #E2E");
-  await page.getByRole("button", { name: "Not booked" }).click();
+  await page.getByRole("button", { name: "Mark booked" }).click();
   await page.getByLabel("Cost").fill("64");
   await page.getByLabel("Stop name").fill(`${title} (edited)`);
   await page.getByRole("button", { name: "Done" }).click();
   await expect(page.getByText(`${title} (edited)`)).toBeVisible();
+  // 12-hour time by default.
+  await expect(page.getByRole("button", { name: new RegExp(`7:30 PM.*${title}`) })).toBeVisible();
 
   await expect
     .poll(async () => {
@@ -74,8 +76,12 @@ test("add, edit, move, and delete a stop", async ({ page }) => {
   const newDay = data.days.find((d: { events: Array<{ title: string }> }) => d.events.some((e) => e.title === `${title} (edited)`));
   await page.goto(`/app/days/${newDay.date}`);
   await page.getByText(`${title} (edited)`).click();
+  // Delete asks first; cancelling keeps the stop.
   await page.getByRole("button", { name: /^Delete$/ }).click();
-  await page.getByRole("button", { name: "Tap again to delete" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByLabel("Stop name")).toHaveValue(`${title} (edited)`);
+  await page.getByRole("button", { name: /^Delete$/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(page.getByText(`${title} (edited)`)).toHaveCount(0);
   await expect
     .poll(async () => (await bundle(page)).days.some((d: { events: Array<{ title: string }> }) => d.events.some((e) => e.title.startsWith(title))))
@@ -166,8 +172,126 @@ test("new trip: create blank, then delete it", async ({ page }) => {
   await expect.poll(async () => (await bundle(page)).days.length).toBe(3);
   await page.getByRole("button", { name: "More" }).click();
   await page.getByRole("button", { name: "Delete trip" }).click();
-  await page.getByRole("button", { name: "Delete" }).click();
+  // Must type the trip name.
+  const confirmButton = page.getByRole("dialog").getByRole("button", { name: "Delete trip" });
+  await expect(confirmButton).toBeDisabled();
+  await page.getByLabel("Trip name").fill("wrong name");
+  await expect(confirmButton).toBeDisabled();
+  await page.getByLabel("Trip name").fill(`E2E Lisbon ${stamp}`);
+  await confirmButton.click();
   await expect(page.locator("h1")).not.toHaveText(`E2E Lisbon ${stamp}`);
   const me = await (await page.request.get("/api/me")).json();
   expect(me.trips.some((t: { name: string }) => t.name === `E2E Lisbon ${stamp}`)).toBe(false);
+});
+
+test("preferences: 24-hour time and moving checked items", async ({ page }) => {
+  const date = await openDay(page, 1);
+  const data = await bundle(page);
+  const day = data.days.find((d: { date: string }) => d.date === date);
+  const created = await (
+    await page.request.post("/api/events", { data: { dayId: day.id, title: `E2E pref ${stamp}`, startTime: "19:05", category: "food" } })
+  ).json();
+  await page.reload();
+  await expect(page.getByRole("button", { name: new RegExp(`7:05 PM.*E2E pref ${stamp}`) })).toBeVisible();
+
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("button", { name: "Preferences" }).last().click(); // the "More" menu item (the sidebar gear opens the same sheet)
+  await page.getByRole("switch", { name: "24-hour time" }).click();
+  await expect(page.getByRole("switch", { name: "24-hour time" })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: new RegExp(`19:05.*E2E pref ${stamp}`) })).toBeVisible();
+
+  // Survives reload (stored on this device).
+  await page.reload();
+  await expect(page.getByRole("button", { name: new RegExp(`19:05.*E2E pref ${stamp}`) })).toBeVisible();
+  await page.evaluate(() => window.localStorage.removeItem("northstar.prefs"));
+  await page.request.delete(`/api/events/${created.id}`);
+
+  // Checked to-dos stay in place by default.
+  const first = `E2E keep A ${stamp}`;
+  const second = `E2E keep B ${stamp}`;
+  const a = await (await page.request.post("/api/reminders", { data: { title: first, dueDate: "2000-01-01" } })).json();
+  const b = await (await page.request.post("/api/reminders", { data: { title: second, dueDate: "2000-01-01" } })).json();
+  await page.goto("/app/lists");
+  const titles = () => page.locator("[data-flip-id]").evaluateAll((rows) => rows.map((row) => row.textContent ?? ""));
+  const indexOf = async (title: string) => (await titles()).findIndex((text) => text.includes(title));
+  await expect.poll(() => indexOf(first)).toBeGreaterThanOrEqual(0);
+  const before = await indexOf(first);
+  await page.getByRole("checkbox", { name: first }).first().click();
+  await page.waitForTimeout(1500);
+  expect(await indexOf(first)).toBe(before);
+
+  // With the preference on, it slides below unchecked rows after a beat.
+  await page.evaluate(() => window.localStorage.setItem("northstar.prefs", JSON.stringify({ checkedToBottom: true })));
+  await page.reload();
+  await expect.poll(async () => (await indexOf(first)) > (await indexOf(second))).toBe(true);
+  await page.getByRole("checkbox", { name: first }).first().click(); // uncheck
+  await expect.poll(async () => (await indexOf(first)) < (await indexOf(second))).toBe(true);
+  await page.evaluate(() => window.localStorage.removeItem("northstar.prefs"));
+
+  await page.request.delete(`/api/reminders/${a.id}`);
+  await page.request.delete(`/api/reminders/${b.id}`);
+});
+
+test("deleting a list item asks first", async ({ page }) => {
+  const title = `E2E confirm ${stamp}`;
+  const created = await (await page.request.post("/api/reminders", { data: { title } })).json();
+  await page.goto("/app/lists");
+  await page.getByRole("button", { name: title }).first().click();
+  await page.getByRole("button", { name: "Delete" }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+  await expect.poll(async () => (await bundle(page)).reminders.some((r: { id: number }) => r.id === created.id)).toBe(true);
+  await page.getByRole("button", { name: "Delete" }).first().click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await expect.poll(async () => (await bundle(page)).reminders.some((r: { id: number }) => r.id === created.id)).toBe(false);
+});
+
+test("layout: whole day rows click, sidebar collapses, list/map resize, profile menu", async ({ page }) => {
+  await page.goto("/app");
+  const shot = (name: string) => page.screenshot({ path: `test-results/screens/layout-${name}.png` });
+
+  // Clicking the far right of a day row (outside the title) opens that day.
+  const row = page.getByRole("link", { name: /^Day 2$/ });
+  const box = (await row.boundingBox())!;
+  await page.mouse.click(box.x + box.width - 12, box.y + box.height / 2);
+  await page.waitForURL(/\/app\/days\//);
+  await page.goto("/app");
+
+  // Resizable divider between the list and the map.
+  const handle = page.locator("[data-slot='resizable-handle']");
+  await expect(handle).toBeVisible();
+  const list = page.locator("[data-slot='resizable-panel']").first();
+  const before = (await list.boundingBox())!.width;
+  const h = (await handle.boundingBox())!;
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(h.x + 160, h.y + h.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await list.boundingBox())!.width).toBeGreaterThan(before + 100);
+  await shot("resized");
+
+  // Profile: the whole bottom area is one button.
+  await page.getByRole("button", { name: "Profile" }).click();
+  await expect(page.getByRole("button", { name: "Preferences" }).last()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await shot("profile-menu");
+  await page.keyboard.press("Escape");
+
+  // Collapse to a rail, survives reload, expands back.
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+  await shot("collapsed");
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+  await page.getByRole("button", { name: "Expand sidebar" }).click();
+  await expect(page.getByRole("button", { name: "Collapse sidebar" })).toBeVisible();
+  await page.evaluate(() => window.localStorage.removeItem("northstar-plan"));
+
+  // Street-level map detail.
+  await page.goto("/app/days/" + (await bundle(page)).days[1].date);
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await page.waitForTimeout(2500);
+  await shot("map-zoomed");
 });

@@ -84,16 +84,12 @@ export default function PlanMapLeaflet({ pins, extraPins = [], route, selectedId
       className="h-full w-full"
       style={{ background: "#EEEDE8" }}
     >
+      {/* Full-color street map with detail down to street level. */}
       <TileLayer
-        url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-        attribution='Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        maxNativeZoom={16}
-        maxZoom={18}
-      />
-      <TileLayer
-        url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
-        maxNativeZoom={16}
-        maxZoom={18}
+        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+        attribution='Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        maxNativeZoom={19}
+        maxZoom={20}
       />
       <ZoomControl position="topright" />
       <InvalidateOnResize />

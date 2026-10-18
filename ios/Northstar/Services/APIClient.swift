@@ -3,6 +3,10 @@ import Foundation
 /// JSON body values, including explicit null (so PATCH can clear fields).
 enum JSON: Encodable {
     case string(String), number(Double), int(Int), bool(Bool), null
+    indirect case array([JSON]), object([String: JSON])
+
+    /// Reference to a row created offline; swapped for its real id when the change is sent.
+    static func tempRef(_ id: Int) -> JSON { .string("{tmp:\(id)}") }
 
     static func optional(_ value: String?) -> JSON { value.map { .string($0) } ?? .null }
 
@@ -14,6 +18,8 @@ enum JSON: Encodable {
         case .int(let v): try c.encode(v)
         case .bool(let v): try c.encode(v)
         case .null: try c.encodeNil()
+        case .array(let v): try c.encode(v)
+        case .object(let v): try c.encode(v)
         }
     }
 }
@@ -45,6 +51,7 @@ final class APIClient {
             comps.percentEncodedQuery = query
             request.url = comps.url
         }
+        if !Connectivity.reachable { throw URLError(.notConnectedToInternet) }
         request.httpMethod = method
         request.timeoutInterval = 60
         if let token = try await tokenProvider() {

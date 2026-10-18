@@ -177,6 +177,7 @@ export async function POST(request: Request) {
           uploadedFiles,
           signal: request.signal,
           onProgress: (label) => write({ type: "status", value: label }),
+          onStep: (step) => write({ type: "step", step }),
         });
 
         assertNotAborted();

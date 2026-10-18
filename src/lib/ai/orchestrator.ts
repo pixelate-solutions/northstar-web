@@ -3210,6 +3210,51 @@ function describeToolProgress(toolName: string, rawArguments: string, tripContex
   }
 }
 
+export interface AiStep {
+  kind: "thought" | "search" | "tool" | "result";
+  text: string;
+}
+
+const STEP_ARG_KEYS = ["title", "date", "dayDate", "startTime", "endTime", "location", "origin", "destination", "name", "description", "amount", "query"];
+
+/** Human-readable form of a real tool call: name plus its key arguments. */
+function describeToolCall(name: string, rawArguments: string) {
+  let args: Record<string, unknown> = {};
+  try {
+    args = JSON.parse(rawArguments || "{}") as Record<string, unknown>;
+  } catch {}
+  const parts: string[] = [];
+  for (const key of STEP_ARG_KEYS) {
+    const value = args[key];
+    if (value === null || value === undefined || value === "") continue;
+    parts.push(`${key}: ${String(value).slice(0, 60)}`);
+  }
+  for (const [key, value] of Object.entries(args)) {
+    if (Array.isArray(value)) parts.push(`${key}: ${value.length} item${value.length === 1 ? "" : "s"}`);
+  }
+  return parts.length ? `${name} · ${parts.slice(0, 4).join(" · ")}` : name;
+}
+
+/** Reasoning summaries and web searches the model produced in one response, in order. */
+function responseSteps(response: Awaited<ReturnType<typeof createOpenAiResponse>>): AiStep[] {
+  const steps: AiStep[] = [];
+  for (const item of response.output ?? []) {
+    if (item.type === "reasoning") {
+      const summary = (item as { summary?: Array<{ text?: string }> }).summary ?? [];
+      for (const part of summary) {
+        const text = part.text?.trim();
+        if (text) steps.push({ kind: "thought", text });
+      }
+    } else if (item.type === "web_search_call") {
+      const action = (item as { action?: { query?: string; queries?: string[]; url?: string; type?: string } }).action;
+      const queries = action?.queries?.length ? action.queries : action?.query ? [action.query] : [];
+      if (queries.length) steps.push({ kind: "search", text: `web_search · ${queries.join(" · ")}` });
+      else if (action?.url) steps.push({ kind: "search", text: `open_page · ${action.url}` });
+    }
+  }
+  return steps;
+}
+
 async function callAiModel(input: {
   history: Awaited<ReturnType<typeof listAiMessages>>;
   tripContext: AiTripContext;
@@ -3220,7 +3265,7 @@ async function callAiModel(input: {
   return createOpenAiResponse({
     body: {
       model: AI_MODEL,
-      reasoning: { effort: AI_REASONING_EFFORT },
+      reasoning: { effort: AI_REASONING_EFFORT, summary: "auto" },
       instructions: buildSystemPrompt({ tripContext: input.tripContext }),
       input: buildUserInputWithGrounding(
         input.history,
@@ -3246,8 +3291,17 @@ export async function runAiTurn(input: {
   uploadedFiles?: AiUploadedFile[];
   signal?: AbortSignal;
   onProgress?: (label: string) => void;
+  onStep?: (step: AiStep) => void;
 }) {
   const db = requireDb();
+  const startedAt = Date.now();
+  const steps: AiStep[] = [];
+  const step = (value: AiStep) => {
+    steps.push(value);
+    try {
+      input.onStep?.(value);
+    } catch {}
+  };
   const progress = (label: string) => {
     try {
       input.onProgress?.(label);
@@ -3327,6 +3381,7 @@ export async function runAiTurn(input: {
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     assertNotAborted(input.signal);
+    responseSteps(response).forEach(step);
     if (hasWebSearchCall(response)) {
       usedTools.push("web_search");
     }
@@ -3347,6 +3402,7 @@ export async function runAiTurn(input: {
 
       usedTools.push(toolName);
       progress(describeToolProgress(toolName, call.arguments, tripContext));
+      step({ kind: "tool", text: describeToolCall(toolName, call.arguments) });
       try {
         const result = await executeToolCall({
           db,
@@ -3359,6 +3415,7 @@ export async function runAiTurn(input: {
           rawArguments: call.arguments,
         });
         outputs.push(buildFunctionCallOutput(call.call_id, result.output));
+        if (result.summary) step({ kind: "result", text: result.summary });
         if (result.cards?.length) cards.push(...result.cards);
         if (result.summary) toolSummaries.push(result.summary);
         if (result.followups?.length) followupsFromTools.push(...result.followups);
@@ -3369,11 +3426,9 @@ export async function runAiTurn(input: {
           tripContext = await buildAiTripContext(db, input.activeTrip.id, input.appUser.id);
         }
       } catch (error) {
-        outputs.push(
-          buildFunctionCallOutput(call.call_id, {
-            error: error instanceof Error ? error.message : "Tool execution failed.",
-          })
-        );
+        const message = error instanceof Error ? error.message : "Tool execution failed.";
+        step({ kind: "result", text: `Error: ${message}` });
+        outputs.push(buildFunctionCallOutput(call.call_id, { error: message }));
       }
     }
 
@@ -3382,7 +3437,7 @@ export async function runAiTurn(input: {
     response = await createOpenAiResponse({
       body: {
         model: AI_MODEL,
-        reasoning: { effort: AI_REASONING_EFFORT },
+        reasoning: { effort: AI_REASONING_EFFORT, summary: "auto" },
         previous_response_id: response.id,
         input: outputs,
         tools: [WEB_SEARCH_TOOL, ...toolDefinitions],
@@ -3415,6 +3470,8 @@ export async function runAiTurn(input: {
       usedTools: Array.from(new Set(usedTools)),
       model: AI_MODEL,
       sources,
+      steps,
+      thoughtMs: Date.now() - startedAt,
     },
   });
 

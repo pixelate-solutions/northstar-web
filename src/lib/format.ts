@@ -35,6 +35,15 @@ export function clock(time: string | null | undefined) {
   return time.slice(0, 5);
 }
 
+/** "19:30:00" -> "7:30 PM" (or "19:30" with 24-hour time on). */
+export function displayClock(time: string | null | undefined, use24Hour: boolean) {
+  const value = clock(time);
+  if (!value || use24Hour) return value;
+  const [h, m] = value.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return value;
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
 /** Accepts "9", "930", "9:30", "7:30p", "19:30" and returns "HH:MM" or null. */
 export function parseClock(input: string): string | null {
   const raw = input.trim().toLowerCase().replace(/\s+/g, "");

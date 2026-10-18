@@ -2,14 +2,13 @@ import SwiftUI
 
 struct CheckBox: View {
     let checked: Bool
-    var round = false
     var body: some View {
         ZStack {
             if checked {
-                RoundedRectangle(cornerRadius: round ? 11 : 7).fill(NS.go)
+                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(NS.go)
                 Image(systemName: "checkmark").font(.system(size: 12, weight: .heavy)).foregroundStyle(.white)
             } else {
-                RoundedRectangle(cornerRadius: round ? 11 : 7).strokeBorder(NS.ink, lineWidth: 2)
+                RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(NS.ink, lineWidth: 2)
             }
         }
         .frame(width: 22, height: 22)
@@ -44,14 +43,22 @@ struct ListsScreen: View {
     @Environment(TripStore.self) private var store
     @State private var tab = 0
     @State private var renaming: RenameTarget?
+    @State private var pendingDelete: PendingDelete?
+    @State private var reminderSettler = CheckSettler()
+    @State private var packingSettler = CheckSettler()
+    @AppStorage(Prefs.checkedToBottomKey) private var checkedToBottom = false
 
     struct RenameTarget: Identifiable { let id: Int; let isPacking: Bool; var text: String }
 
     var body: some View {
         let bundle = store.bundle
         let reminders = (bundle?.reminders ?? []).sorted {
-            if ($0.isDone ?? false) != ($1.isDone ?? false) { return !($0.isDone ?? false) }
-            return ($0.dueDate ?? "9999") < ($1.dueDate ?? "9999")
+            if checkedToBottom {
+                let a = reminderSettler.sortState($0.id, $0.isDone ?? false), b = reminderSettler.sortState($1.id, $1.isDone ?? false)
+                if a != b { return !a }
+            }
+            if ($0.dueDate ?? "9999") != ($1.dueDate ?? "9999") { return ($0.dueDate ?? "9999") < ($1.dueDate ?? "9999") }
+            return $0.id < $1.id
         }
         let packing = bundle?.packingItems ?? []
         let groups = Dictionary(grouping: packing, by: { $0.category.isEmpty ? "other" : $0.category })
@@ -60,6 +67,10 @@ struct ListsScreen: View {
 
         NavigationStack {
             List {
+                Text("Lists")
+                    .font(NS.display(34)).tracking(-1.2)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 4, trailing: 20))
                 Section {
                     Picker("", selection: $tab) {
                         Text("To do  \(reminders.filter { !($0.isDone ?? false) }.count)").tag(0)
@@ -79,6 +90,7 @@ struct ListsScreen: View {
                         HStack(spacing: 14) {
                             Button {
                                 let next = !(reminder.isDone ?? false)
+                                reminderSettler.toggled(reminder.id, from: !next)
                                 Task { await store.updateReminder(reminder.id, patch: ["isDone": .bool(next)]) { $0.isDone = next } }
                             } label: { CheckBox(checked: reminder.isDone ?? false) }
                             .buttonStyle(.plain)
@@ -97,19 +109,27 @@ struct ListsScreen: View {
                         .frame(minHeight: 40)
                         .contentShape(Rectangle())
                         .onTapGesture { if store.canEdit { renaming = RenameTarget(id: reminder.id, isPacking: false, text: reminder.title) } }
-                        .swipeActions {
+                        .swipeActions(allowsFullSwipe: false) {
                             if store.canEdit {
-                                Button(role: .destructive) { Task { await store.deleteReminder(reminder.id) } } label: { Label("Delete", systemImage: "trash") }
+                                Button { pendingDelete = PendingDelete(title: reminder.title) { Task { await store.deleteReminder(reminder.id) } } } label: { Label("Delete", systemImage: "trash") }
+                                    .tint(NS.stop)
                             }
                         }
                     }
                 } else {
                     ForEach(groups, id: \.key) { group in
                         Section(header: Text(group.key.uppercased()).font(NS.sans(12, .bold)).tracking(1).foregroundStyle(NS.muted)) {
-                            ForEach(group.value.sorted { ($0.isPacked ?? false) == ($1.isPacked ?? false) ? $0.name < $1.name : !($0.isPacked ?? false) }) { item in
+                            ForEach(group.value.sorted {
+                                if checkedToBottom {
+                                    let a = packingSettler.sortState($0.id, $0.isPacked ?? false), b = packingSettler.sortState($1.id, $1.isPacked ?? false)
+                                    if a != b { return !a }
+                                }
+                                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                            }) { item in
                                 HStack(spacing: 14) {
                                     Button {
                                         let next = !(item.isPacked ?? false)
+                                        packingSettler.toggled(item.id, from: !next)
                                         Task { await store.updatePacking(item.id, patch: ["isPacked": .bool(next)]) { $0.isPacked = next } }
                                     } label: { CheckBox(checked: item.isPacked ?? false) }
                                     .buttonStyle(.plain)
@@ -125,9 +145,10 @@ struct ListsScreen: View {
                                 .frame(minHeight: 40)
                                 .contentShape(Rectangle())
                                 .onTapGesture { if store.canEdit { renaming = RenameTarget(id: item.id, isPacking: true, text: item.name) } }
-                                .swipeActions {
+                                .swipeActions(allowsFullSwipe: false) {
                                     if store.canEdit {
-                                        Button(role: .destructive) { Task { await store.deletePacking(item.id) } } label: { Label("Delete", systemImage: "trash") }
+                                        Button { pendingDelete = PendingDelete(title: item.name) { Task { await store.deletePacking(item.id) } } } label: { Label("Delete", systemImage: "trash") }
+                                            .tint(NS.stop)
                                     }
                                 }
                             }
@@ -136,7 +157,9 @@ struct ListsScreen: View {
                 }
             }
             .listStyle(.plain)
-            .navigationTitle("Lists")
+            .toolbar(.hidden, for: .navigationBar)
+            .scrollDismissesKeyboard(.interactively)
+            .confirmDelete($pendingDelete)
             .refreshable { await store.refresh() }
             .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
                 TextField("Name", text: Binding(get: { renaming?.text ?? "" }, set: { renaming?.text = $0 }))

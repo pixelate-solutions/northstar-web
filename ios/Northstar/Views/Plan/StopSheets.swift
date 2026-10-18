@@ -16,6 +16,7 @@ struct FieldBox<Content: View>: View {
 struct StopEditorSheet: View {
     @Environment(TripStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     let stop: Stop
 
     @State private var title = ""
@@ -25,9 +26,10 @@ struct StopEditorSheet: View {
     @State private var cost = ""
     @State private var booked = false
     @State private var notes = ""
-    @State private var details = ""
     @State private var confirmDelete = false
     @State private var changingAddress = false
+
+    private static let chipHeight: CGFloat = 34
 
     private var current: Stop {
         store.day(id: stop.dayId)?.events.first { $0.id == stop.id } ?? stop
@@ -35,6 +37,7 @@ struct StopEditorSheet: View {
 
     var body: some View {
         let readOnly = !store.canEdit
+        let categoryColor = CategoryInfo.color(category)
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
@@ -56,8 +59,11 @@ struct StopEditorSheet: View {
                                 .labelsHidden()
                                 .disabled(readOnly)
                                 .onChange(of: time) { _, _ in saveTime() }
+                                .frame(height: Self.chipHeight)
                         } else if !readOnly {
-                            Button { hasTime = true; saveTime() } label: { Chip(icon: "clock", text: "Add time") }
+                            Button { hasTime = true; saveTime() } label: {
+                                chip { Label("Add time", systemImage: "clock") }
+                            }
                         }
                         Menu {
                             ForEach(CategoryInfo.all, id: \.value) { item in
@@ -66,68 +72,72 @@ struct StopEditorSheet: View {
                                 }
                             }
                         } label: {
-                            Chip(icon: CategoryInfo.info(category).symbol, text: CategoryInfo.info(category).label)
+                            chip(fill: categoryColor.opacity(0.14), stroke: nil) {
+                                Label(CategoryInfo.info(category).label, systemImage: CategoryInfo.info(category).symbol)
+                                    .foregroundStyle(categoryColor)
+                            }
                         }
                         .disabled(readOnly)
-                        HStack(spacing: 4) {
-                            Text("$").font(NS.mono(13)).foregroundStyle(NS.muted)
-                            TextField("Cost", text: $cost)
-                                .keyboardType(.decimalPad)
-                                .font(NS.mono(13))
-                                .frame(width: 60)
-                                .disabled(readOnly)
+                        chip {
+                            HStack(spacing: 4) {
+                                Text("$").foregroundStyle(NS.muted)
+                                TextField("Cost", text: $cost)
+                                    .keyboardType(.decimalPad)
+                                    .frame(width: 60)
+                                    .disabled(readOnly)
+                            }
+                            .font(NS.mono(14))
                         }
-                        .padding(.horizontal, 11).padding(.vertical, 6)
-                        .background(Capsule().fill(NS.surface))
                         Button {
                             booked.toggle()
                             let value = booked
                             save(["isBooked": .bool(value)]) { $0.isBooked = value }
                         } label: {
-                            HStack(spacing: 5) {
-                                if booked { Image(systemName: "checkmark").font(.system(size: 12, weight: .heavy)) }
-                                Text(booked ? "Booked" : "Not booked").font(NS.sans(14, .semibold))
+                            if booked {
+                                chip(fill: NS.go, stroke: nil) {
+                                    Label("Booked", systemImage: "checkmark").foregroundStyle(.white)
+                                }
+                            } else {
+                                chip(fill: .white, stroke: NS.ink) {
+                                    Label("Mark booked", systemImage: "circle.dashed").foregroundStyle(NS.ink)
+                                }
                             }
-                            .padding(.horizontal, 11).padding(.vertical, 6)
-                            .foregroundStyle(booked ? .white : NS.ink)
-                            .background(Capsule().fill(booked ? NS.go : NS.surface))
                         }
                         .disabled(readOnly)
                     }
                     .foregroundStyle(NS.ink)
+                    .padding(.horizontal, 20)
                 }
+                .fadedEdges(.horizontal, length: 20)
+                .padding(.horizontal, -20)
 
-                Button { if !readOnly { changingAddress = true } } label: {
-                    FieldBox {
-                        HStack(spacing: 8) {
-                            Image(systemName: "mappin.and.ellipse").foregroundStyle(current.hasCoordinates ? NS.ink : NS.faint)
-                            Text(current.location?.isEmpty == false ? current.location! : "Address").foregroundStyle(current.location?.isEmpty == false ? NS.ink : NS.faint)
-                                .lineLimit(2).multilineTextAlignment(.leading)
-                            Spacer()
+                HStack(spacing: 8) {
+                    Button { if !readOnly { changingAddress = true } } label: {
+                        FieldBox {
+                            HStack(spacing: 8) {
+                                Image(systemName: "mappin.and.ellipse").foregroundStyle(current.hasCoordinates ? NS.ink : NS.faint)
+                                Text(current.location?.isEmpty == false ? current.location! : "Address").foregroundStyle(current.location?.isEmpty == false ? NS.ink : NS.faint)
+                                    .lineLimit(2).multilineTextAlignment(.leading)
+                                Spacer(minLength: 0)
+                            }
                         }
                     }
-                }
-                .buttonStyle(.plain)
-
-                if current.hasCoordinates, let lat = current.latitude, let lng = current.longitude {
-                    Button {
-                        let item = MKMapItem(placemark: MKPlacemark(coordinate: .init(latitude: lat, longitude: lng)))
-                        item.name = current.title
-                        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
-                    } label: {
-                        Label("Directions in Maps", systemImage: "arrow.triangle.turn.up.right.diamond")
-                            .font(NS.sans(14, .semibold))
+                    .buttonStyle(.plain)
+                    if let url = directionsURL {
+                        Button { openURL(url) } label: {
+                            Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(NS.ink)
+                                .frame(width: 46, height: 46)
+                                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(NS.lane))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Directions in Maps")
                     }
-                    .foregroundStyle(NS.ink)
                 }
 
                 FieldBox {
-                    TextField("Notes", text: $notes, axis: .vertical).lineLimit(2...8).disabled(readOnly)
-                }
-                if !details.isEmpty || !readOnly {
-                    FieldBox {
-                        TextField("Details", text: $details, axis: .vertical).lineLimit(1...8).disabled(readOnly)
-                    }
+                    TextField("Notes", text: $notes, axis: .vertical).lineLimit(3...14).disabled(readOnly)
                 }
 
                 if !readOnly {
@@ -154,6 +164,7 @@ struct StopEditorSheet: View {
             }
             .padding(20)
         }
+        .scrollDismissesKeyboard(.interactively)
         .onAppear(perform: load)
         .onDisappear(perform: saveAll)
         .confirmationDialog("Delete \(current.title)?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -161,6 +172,7 @@ struct StopEditorSheet: View {
                 Task { await store.deleteStop(stop.id, dayId: stop.dayId) }
                 dismiss()
             }
+            Button("Cancel", role: .cancel) {}
         }
         .sheet(isPresented: $changingAddress) {
             PlacePickerSheet(near: current.hasCoordinates ? CLLocationCoordinate2D(latitude: current.latitude!, longitude: current.longitude!) : nil) { place in
@@ -171,7 +183,30 @@ struct StopEditorSheet: View {
                     $0.lng = String(place.coordinate.longitude)
                 }
             }
+            .solidSheet()
         }
+    }
+
+    /// Apple Maps driving directions to the stop's coordinates, labelled with its name.
+    private var directionsURL: URL? {
+        guard current.hasCoordinates, let lat = current.latitude, let lng = current.longitude else { return nil }
+        var components = URLComponents(string: "https://maps.apple.com/")!
+        components.queryItems = [
+            URLQueryItem(name: "daddr", value: "\(lat),\(lng)"),
+            URLQueryItem(name: "q", value: current.title),
+            URLQueryItem(name: "dirflg", value: "d"),
+        ]
+        return components.url
+    }
+
+    private func chip<Label: View>(fill: Color = NS.surface, stroke: Color? = nil, @ViewBuilder _ label: () -> Label) -> some View {
+        label()
+            .font(NS.sans(14, .semibold))
+            .labelStyle(ChipLabelStyle())
+            .padding(.horizontal, 12)
+            .frame(height: Self.chipHeight)
+            .background(Capsule().fill(fill))
+            .overlay { if let stroke { Capsule().strokeBorder(stroke, lineWidth: 1.5) } }
     }
 
     private func load() {
@@ -180,8 +215,12 @@ struct StopEditorSheet: View {
         category = s.category
         booked = s.booked
         cost = s.costValue.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? String(Int($0)) : String($0) } ?? ""
-        notes = s.tip ?? ""
-        details = s.description ?? ""
+        // One notes field: older stops may also carry text in `description`.
+        var parts: [String] = []
+        for text in [s.tip, s.description].compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) }) where !text.isEmpty && !parts.contains(text) {
+            parts.append(text)
+        }
+        notes = parts.joined(separator: "\n\n")
         if let t = Fmt.timeDate(s.startTime) { time = t; hasTime = true }
     }
 
@@ -198,7 +237,7 @@ struct StopEditorSheet: View {
 
     private func saveTime() {
         let value = Fmt.timeString(time)
-        guard Fmt.clock(current.startTime) != value else { return }
+        guard current.startTime?.prefix(5) != Substring(value) else { return }
         save(["startTime": .string(value)]) { $0.startTime = "\(value):00" }
     }
 
@@ -210,18 +249,27 @@ struct StopEditorSheet: View {
         if nextCost != currentCost {
             save(["cost": nextCost.map { .number($0) } ?? .null]) { $0.cost = nextCost.map { String($0) } }
         }
-        if notes != (current.tip ?? "") {
-            let value = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-            save(["tip": value.isEmpty ? .null : .string(value)]) { $0.tip = value.isEmpty ? nil : value }
-        }
-        if details != (current.description ?? "") {
-            let value = details.trimmingCharacters(in: .whitespacesAndNewlines)
-            save(["description": value.isEmpty ? .null : .string(value)]) { $0.description = value.isEmpty ? nil : value }
+        let value = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasDescription = !(current.description ?? "").isEmpty
+        if value != (current.tip ?? "") || hasDescription {
+            save(["tip": value.isEmpty ? .null : .string(value), "description": .null]) {
+                $0.tip = value.isEmpty ? nil : value
+                $0.description = nil
+            }
         }
     }
 }
 
 /// Apple Maps search used for adding stops and changing a stop's address.
+struct ChipLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) {
+            configuration.icon.font(.system(size: 12, weight: .bold))
+            configuration.title
+        }
+    }
+}
+
 struct PlacePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     let near: CLLocationCoordinate2D?
@@ -246,6 +294,11 @@ struct PlacePickerSheet: View {
             }
             .listStyle(.plain)
             .searchable(text: Binding(get: { search.query }, set: { search.query = $0 }), placement: .navigationBarDrawer(displayMode: .always), prompt: "Search places")
+            .onSubmit(of: .search) {
+                Task {
+                    if let place = await search.search(search.query) { onPick(place); dismiss() }
+                }
+            }
             .navigationTitle("Address")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
@@ -301,6 +354,10 @@ struct AddStopSheet: View {
                 }
             }
             .searchable(text: Binding(get: { search.query }, set: { search.query = $0 }), placement: .navigationBarDrawer(displayMode: .always), prompt: "Search a place or type a stop")
+            .onSubmit(of: .search) {
+                let text = search.query.trimmingCharacters(in: .whitespaces)
+                Task { await add(name: text, place: await search.search(text)) }
+            }
             .navigationTitle("Add a stop")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }

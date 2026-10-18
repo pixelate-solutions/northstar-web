@@ -42,8 +42,15 @@ enum Fmt {
         return "\(short(start)) – \(short(end))"
     }
 
-    /// "07:00:00" -> "07:00"
-    static func clock(_ t: String?) -> String { t.map { String($0.prefix(5)) } ?? "" }
+    /// "19:30:00" -> "7:30 PM" (or "19:30" when 24-hour time is on).
+    static func clock(_ t: String?, use24Hour: Bool = Prefs.use24Hour) -> String {
+        guard let t, t.count >= 5 else { return "" }
+        if use24Hour { return String(t.prefix(5)) }
+        let parts = t.prefix(5).split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return String(t.prefix(5)) }
+        let hour = parts[0] % 12 == 0 ? 12 : parts[0] % 12
+        return String(format: "%d:%02d %@", hour, parts[1], parts[0] < 12 ? "AM" : "PM")
+    }
 
     static func money(_ value: Double, cents: Bool = false) -> String {
         let f = NumberFormatter()

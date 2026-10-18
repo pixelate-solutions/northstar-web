@@ -15,3 +15,12 @@ export function useMediaQuery(query: string) {
 }
 
 export const useIsDesktop = () => useMediaQuery("(min-width: 1024px)");
+
+/** False during server render and hydration, true after (avoids a layout flash for JS-chosen layouts). */
+export function useHydrated() {
+  return useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false
+  );
+}

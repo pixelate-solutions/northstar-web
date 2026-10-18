@@ -1,16 +1,28 @@
 "use client";
 
-import { ArrowRightLeft, Check, Clock, MapPin, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Check, CircleDashed, Clock, MapPin, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
-import { Popover } from "@/components/ns/overlay";
+import { Popover, useConfirm } from "@/components/ns/overlay";
 import { PlaceResults, usePlaceSearch, type PlaceResult } from "@/components/plan/PlaceSearch";
 import { CATEGORY_OPTIONS, categoryMeta } from "@/components/trip/category";
+import { timeColumnClass } from "@/components/plan/StopRow";
 import { useTrip, type EventInput } from "@/components/trip/TripProvider";
 import type { EventJson } from "@/lib/client-types";
-import { clock, parseClock, shortDate } from "@/lib/format";
+import { clock, displayClock, parseClock, shortDate } from "@/lib/format";
+import { usePrefs } from "@/lib/prefs";
 
-const chip = "flex h-9 items-center gap-1.5 rounded-[8px] bg-surface px-3 text-[14px] font-semibold";
+const chip = "flex h-9 shrink-0 items-center gap-1.5 rounded-[8px] bg-surface px-3 text-[14px] font-semibold";
+
+/** One notes field: older stops may also carry text in `description`. */
+function mergedNotes(event: EventJson) {
+  const parts: string[] = [];
+  for (const text of [event.tip, event.description]) {
+    const value = text?.trim();
+    if (value && !parts.includes(value)) parts.push(value);
+  }
+  return parts.join("\n\n");
+}
 
 export function StopEditor({
   event,
@@ -24,18 +36,18 @@ export function StopEditor({
   onClose: () => void;
 }) {
   const { updateEvent, deleteEvent, bundle, canEdit } = useTrip();
+  const confirm = useConfirm();
+  const [{ use24Hour }] = usePrefs();
   const [title, setTitle] = useState(event.title);
-  const [start, setStart] = useState(clock(event.startTime));
-  const [end, setEnd] = useState(clock(event.endTime));
+  const [start, setStart] = useState(displayClock(event.startTime, use24Hour));
+  const [end, setEnd] = useState(displayClock(event.endTime, use24Hour));
   const [cost, setCost] = useState(event.cost !== null && Number(event.cost) ? String(Number(event.cost)) : "");
   const [location, setLocation] = useState(event.location ?? "");
-  const [tip, setTip] = useState(event.tip ?? "");
-  const [description, setDescription] = useState(event.description ?? "");
+  const [notes, setNotes] = useState(() => mergedNotes(event));
   const [locationFocused, setLocationFocused] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
 
@@ -53,13 +65,13 @@ export function StopEditor({
   function commitTimes() {
     const nextStart = start ? parseClock(start) : null;
     const nextEnd = end ? parseClock(end) : null;
-    if (start && !nextStart) setStart(clock(event.startTime));
-    if (end && !nextEnd) setEnd(clock(event.endTime));
+    if (start && !nextStart) setStart(displayClock(event.startTime, use24Hour));
+    if (end && !nextEnd) setEnd(displayClock(event.endTime, use24Hour));
     const patch: EventInput = {};
     if ((nextStart ?? null) !== (event.startTime ? clock(event.startTime) : null)) patch.startTime = nextStart;
     if ((nextEnd ?? null) !== (event.endTime ? clock(event.endTime) : null)) patch.endTime = nextEnd;
-    if (nextStart) setStart(nextStart);
-    if (nextEnd) setEnd(nextEnd);
+    if (nextStart) setStart(displayClock(nextStart, use24Hour));
+    if (nextEnd) setEnd(displayClock(nextEnd, use24Hour));
     if (Object.keys(patch).length) save(patch);
   }
 
@@ -75,7 +87,7 @@ export function StopEditor({
   return (
     <div className="my-1 flex flex-col gap-3.5 rounded-[16px] border-[1.5px] border-ink bg-white py-3.5 pl-3 pr-4 shadow-[0_8px_24px_rgba(17,17,16,0.08)]">
       <div className="flex items-center gap-3 sm:gap-3.5">
-        <span className="w-10 shrink-0 sm:w-11" />
+        <span className={`shrink-0 ${timeColumnClass(use24Hour)}`} />
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-lane font-mono text-[12px] font-semibold">{number}</span>
         <input
           ref={titleRef}
@@ -96,7 +108,7 @@ export function StopEditor({
         </button>
       </div>
 
-      <div className="flex flex-col gap-2.5 sm:pl-[100px]">
+      <div className={`flex flex-col gap-2.5 ${use24Hour ? "sm:pl-[100px]" : "sm:pl-[124px]"}`}>
         <div className="flex flex-wrap items-center gap-1.5">
           <label className={chip}>
             <Clock size={14} strokeWidth={2.2} />
@@ -106,7 +118,7 @@ export function StopEditor({
               onChange={(e) => setStart(e.target.value)}
               onBlur={commitTimes}
               placeholder="Time"
-              className="w-[46px] bg-transparent font-mono text-[13px] font-medium placeholder:font-sans placeholder:text-faint"
+              className={`${use24Hour ? "w-[46px]" : "w-[66px]"} bg-transparent font-mono text-[13px] font-medium placeholder:font-sans placeholder:text-faint`}
               aria-label="Start time"
             />
             <span className="text-faint">–</span>
@@ -116,13 +128,19 @@ export function StopEditor({
               onChange={(e) => setEnd(e.target.value)}
               onBlur={commitTimes}
               placeholder="End"
-              className="w-[42px] bg-transparent font-mono text-[13px] font-medium placeholder:font-sans placeholder:text-faint"
+              className={`${use24Hour ? "w-[42px]" : "w-[66px]"} bg-transparent font-mono text-[13px] font-medium placeholder:font-sans placeholder:text-faint`}
               aria-label="End time"
             />
           </label>
 
           <div className="relative">
-            <button type="button" disabled={readOnly} onClick={() => setCategoryOpen((v) => !v)} className={chip}>
+            <button
+              type="button"
+              disabled={readOnly}
+              onClick={() => setCategoryOpen((v) => !v)}
+              className={chip}
+              style={{ color: meta.color, background: `${meta.color}1F` }}
+            >
               <CategoryIcon size={14} strokeWidth={2.2} />
               {meta.label}
             </button>
@@ -139,7 +157,7 @@ export function StopEditor({
                     }}
                     className={`flex items-center gap-2 rounded-[8px] px-2.5 py-2 text-[14px] font-semibold hover:bg-surface ${option.value === event.category ? "bg-surface" : ""}`}
                   >
-                    <Icon size={14} /> {option.label}
+                    <Icon size={14} style={{ color: option.color }} /> {option.label}
                   </button>
                 );
               })}
@@ -168,11 +186,11 @@ export function StopEditor({
             type="button"
             disabled={readOnly}
             onClick={() => save({ isBooked: !event.isBooked })}
-            className={`${chip} ${event.isBooked ? "bg-go text-white" : ""}`}
+            className={`${chip} ${event.isBooked ? "bg-go text-white" : "border-[1.5px] border-ink bg-white hover:bg-surface"}`}
             aria-pressed={Boolean(event.isBooked)}
           >
-            {event.isBooked ? <Check size={14} strokeWidth={2.6} /> : null}
-            {event.isBooked ? "Booked" : "Not booked"}
+            {event.isBooked ? <Check size={14} strokeWidth={2.6} /> : <CircleDashed size={14} strokeWidth={2.2} />}
+            {event.isBooked ? "Booked" : "Mark booked"}
           </button>
         </div>
 
@@ -213,43 +231,31 @@ export function StopEditor({
         </div>
 
         <textarea
-          value={tip}
+          value={notes}
           readOnly={readOnly}
-          onChange={(e) => setTip(e.target.value)}
-          onBlur={() => tip !== (event.tip ?? "") && save({ tip: tip.trim() || null })}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={() => {
+            const value = notes.trim() || null;
+            if (value !== (event.tip ?? null) || event.description) save({ tip: value, description: null });
+          }}
           placeholder="Notes"
-          rows={Math.min(6, Math.max(2, tip.split("\n").length))}
+          rows={Math.min(10, Math.max(3, notes.split("\n").length + Math.floor(notes.length / 70)))}
           className="w-full resize-none rounded-[8px] bg-surface px-3 py-2.5 text-[14px] font-medium leading-5 placeholder:text-faint"
           aria-label="Notes"
         />
-
-        {description || !readOnly ? (
-          <textarea
-            value={description}
-            readOnly={readOnly}
-            onChange={(e) => setDescription(e.target.value)}
-            onBlur={() => description !== (event.description ?? "") && save({ description: description.trim() || null })}
-            placeholder="Details"
-            rows={description ? Math.min(6, Math.max(2, Math.ceil(description.length / 60))) : 1}
-            className="w-full resize-none rounded-[8px] bg-surface px-3 py-2.5 text-[14px] font-medium leading-5 placeholder:text-faint"
-            aria-label="Details"
-          />
-        ) : null}
 
         {canEdit ? (
           <div className="flex items-center justify-between pt-0.5">
             <button
               type="button"
-              onClick={() => {
-                if (confirmDelete) {
-                  onClose();
-                  void deleteEvent(event.id);
-                } else setConfirmDelete(true);
+              onClick={async () => {
+                if (!(await confirm(`Delete ${event.title}?`))) return;
+                onClose();
+                void deleteEvent(event.id);
               }}
-              onBlur={() => setConfirmDelete(false)}
               className="flex items-center gap-1.5 text-[14px] font-semibold text-stop"
             >
-              <Trash2 size={14} /> {confirmDelete ? "Tap again to delete" : "Delete"}
+              <Trash2 size={14} /> Delete
             </button>
             <div className="relative">
               <button type="button" onClick={() => setMoveOpen((v) => !v)} className="flex items-center gap-1.5 text-[14px] font-semibold text-muted hover:text-ink">

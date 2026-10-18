@@ -3,6 +3,8 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "sonner";
 
+import { ConfirmProvider } from "@/components/ns/overlay";
+
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider
@@ -20,7 +22,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
         },
       }}
     >
-      {children}
+      <ConfirmProvider>{children}</ConfirmProvider>
       <Toaster
         position="bottom-center"
         toastOptions={{

@@ -19,12 +19,15 @@
 		63CC832C23905CE3F10CDED3 /* BudgetScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C322D0A7AA43C75F4E8356B /* BudgetScreen.swift */; };
 		6BF3F60D0843F2E5BA28D61D /* AskScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C15F58D31B18FA964742749 /* AskScreen.swift */; };
 		75841285DF4C422F41B7BFEC /* DayContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94A4023BFF028ABF8C35FB12 /* DayContent.swift */; };
+		79E1A4830B8668A34F416B6C /* KeyboardDismiss.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95419F97138392F3A5949698 /* KeyboardDismiss.swift */; };
 		8A4FB163C299CE4550B2CD66 /* GeistMono.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 12210CDF50AF6B0F57C9B45E /* GeistMono.ttf */; };
 		979015F95B25A767899CE058 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F57408865C7B545D8A00169 /* APIClient.swift */; };
 		9D52045B7A8C087F282F905B /* ClerkKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = 3E50BF082F65ADC43229F3EF /* ClerkKitUI */; };
+		9FAF408AFBABC4B84B4E4B3D /* Offline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8913CEEC5EE4E66363D0E780 /* Offline.swift */; };
 		A573DBB4F790E017B66850AF /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DCA56B9535CAC595A1E5538 /* SignInView.swift */; };
 		ADDF6680A15D74102954E003 /* InterTight.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F1DE1AAE67A20B40B3A024F7 /* InterTight.ttf */; };
 		C415B65B30A51F408505DEB4 /* ClerkKit in Frameworks */ = {isa = PBXBuildFile; productRef = E2A7732CB6CE6D65EED12385 /* ClerkKit */; };
+		D214A56DA39D772D52C26CE7 /* OfflineAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16C0FC5D7632F15AB961BDB1 /* OfflineAI.swift */; };
 		D46672F87385050981349CDD /* NorthstarUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 488E30E89372A54139BDC6CA /* NorthstarUITests.swift */; };
 		EF020736DB1F7DF2CD2D6495 /* StopSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FD36017DA13629ECE796D1 /* StopSheets.swift */; };
 		F2B90376A6B931A3BF92D3DA /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFAA9F241EC4BF13A614277 /* MainView.swift */; };
@@ -47,6 +50,7 @@
 		13BD62C4D65033DB5C48A337 /* NorthstarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NorthstarApp.swift; sourceTree = "<group>"; };
 		15268632525F86F73F693884 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		16A00CDC511D7B3951336886 /* ListsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListsScreen.swift; sourceTree = "<group>"; };
+		16C0FC5D7632F15AB961BDB1 /* OfflineAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineAI.swift; sourceTree = "<group>"; };
 		2FFAA9F241EC4BF13A614277 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		488E30E89372A54139BDC6CA /* NorthstarUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NorthstarUITests.swift; sourceTree = "<group>"; };
 		57FD36017DA13629ECE796D1 /* StopSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopSheets.swift; sourceTree = "<group>"; };
@@ -58,10 +62,12 @@
 		7C322D0A7AA43C75F4E8356B /* BudgetScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BudgetScreen.swift; sourceTree = "<group>"; };
 		7E8725742ECDDF281AA6427A /* Format.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Format.swift; sourceTree = "<group>"; };
 		82345B0EDBA712269B32195A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		8913CEEC5EE4E66363D0E780 /* Offline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Offline.swift; sourceTree = "<group>"; };
 		8D3DF5EF60C6F2A02E373701 /* Routing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Routing.swift; sourceTree = "<group>"; };
 		9353356227C487C106DFABBD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		94A4023BFF028ABF8C35FB12 /* DayContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayContent.swift; sourceTree = "<group>"; };
 		950AF8378B9EFF28E0FCABAE /* Northstar.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Northstar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		95419F97138392F3A5949698 /* KeyboardDismiss.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDismiss.swift; sourceTree = "<group>"; };
 		9C15F58D31B18FA964742749 /* AskScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskScreen.swift; sourceTree = "<group>"; };
 		A4A66706F117EEF020F97DDF /* NorthstarUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = NorthstarUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		CB9D8F685AC41DE9B1CD2631 /* TripStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripStore.swift; sourceTree = "<group>"; };
@@ -104,6 +110,8 @@
 			children = (
 				5F57408865C7B545D8A00169 /* APIClient.swift */,
 				7E8725742ECDDF281AA6427A /* Format.swift */,
+				8913CEEC5EE4E66363D0E780 /* Offline.swift */,
+				16C0FC5D7632F15AB961BDB1 /* OfflineAI.swift */,
 				8D3DF5EF60C6F2A02E373701 /* Routing.swift */,
 			);
 			path = Services;
@@ -225,6 +233,7 @@
 		EA19A9B87D2D82733268854A /* App */ = {
 			isa = PBXGroup;
 			children = (
+				95419F97138392F3A5949698 /* KeyboardDismiss.swift */,
 				13BD62C4D65033DB5C48A337 /* NorthstarApp.swift */,
 				15268632525F86F73F693884 /* Theme.swift */,
 			);
@@ -347,10 +356,13 @@
 				63CC832C23905CE3F10CDED3 /* BudgetScreen.swift in Sources */,
 				75841285DF4C422F41B7BFEC /* DayContent.swift in Sources */,
 				5BCE3267B55500E8A37FFDAE /* Format.swift in Sources */,
+				79E1A4830B8668A34F416B6C /* KeyboardDismiss.swift in Sources */,
 				34B70B304529DE1CAA2361BE /* ListsScreen.swift in Sources */,
 				F2B90376A6B931A3BF92D3DA /* MainView.swift in Sources */,
 				4502621DDB1D102E9FBE0F89 /* Models.swift in Sources */,
 				026191C667AC98DFAAC6DD31 /* NorthstarApp.swift in Sources */,
+				9FAF408AFBABC4B84B4E4B3D /* Offline.swift in Sources */,
+				D214A56DA39D772D52C26CE7 /* OfflineAI.swift in Sources */,
 				0A6A1194D160330797633B1A /* PlanScreen.swift in Sources */,
 				02B91D18A7C08A8562A13689 /* Routing.swift in Sources */,
 				A573DBB4F790E017B66850AF /* SignInView.swift in Sources */,
@@ -439,7 +451,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = GT47DS9Z72;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -531,7 +543,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = GT47DS9Z72;
 				ENABLE_NS_ASSERTIONS = NO;

@@ -136,10 +136,15 @@ struct AICard: Codable, Hashable {
 
 struct AIMessage: Codable, Identifiable, Hashable {
     struct Source: Codable, Hashable { let url: String; let title: String }
+    struct Step: Codable, Hashable { let kind: String; let text: String }
     struct Metadata: Codable, Hashable {
         var undoable: Bool?
         var undoApplied: Bool?
         var sources: [Source]?
+        var steps: [Step]?
+        var thoughtMs: Double?
+        /// Answered by the on-device model while offline (not saved to the server).
+        var onDevice: Bool?
     }
     var id: Int
     var role: String

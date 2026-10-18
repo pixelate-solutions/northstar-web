@@ -33,6 +33,12 @@ test("Ask Northstar edits the plan and Undo reverts it", async ({ page }) => {
   await expect(page.getByText("Ask Northstar", { exact: true })).toBeVisible();
   await expect(page.getByText(/change(s)?$/).first()).toBeVisible({ timeout: 200_000 });
 
+  // The answer collapses its work into "Thought for N seconds", which expands to the real tool calls.
+  const thought = page.getByRole("button", { name: /^Thought for \d+ seconds?$/ });
+  await expect(thought).toBeVisible();
+  await thought.click();
+  await expect(page.getByText(/^create_event · /).first()).toBeVisible();
+
   const after = await (await page.request.get("/api/trip")).json();
   const added = after.days.find((d: { id: number }) => d.id === day.id).events.find((e: { title: string }) => e.title.includes(title));
   expect(added, "AI should have created the stop").toBeTruthy();

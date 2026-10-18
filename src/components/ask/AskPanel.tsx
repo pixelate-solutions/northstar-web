@@ -1,11 +1,10 @@
 "use client";
 
-import { ArrowUp, History, Map as MapIcon, Paperclip, Plus, Square, Undo2, X } from "lucide-react";
+import { ArrowUp, ChevronRight, CornerDownRight, Map as MapIcon, Menu, Paperclip, Search, Sparkle, SquarePen, Square, Undo2, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { StarMark } from "@/components/brand/Logo";
-import { MenuItem, Popover } from "@/components/ns/overlay";
 import { useTrip } from "@/components/trip/TripProvider";
 import { api } from "@/lib/api-client";
 import type { TripBundle } from "@/lib/client-types";
@@ -13,6 +12,74 @@ import { shortDate } from "@/lib/format";
 import type { AiCard, AiConversationSummary, AiMessagePayload } from "@/lib/ai/types";
 
 type Message = AiMessagePayload & { pending?: boolean };
+type Step = { kind: "thought" | "search" | "tool" | "result"; text: string };
+
+const isFinePointer = () => typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches;
+
+function PulsingDot() {
+  return <span className="inline-block h-3 w-3 shrink-0 animate-[ns-pulse_1.4s_ease-in-out_infinite] rounded-full bg-ink" aria-label="Thinking" />;
+}
+
+function StepIcon({ step }: { step: Step }) {
+  const className = step.kind === "result" && step.text.startsWith("Error") ? "text-stop" : "text-muted";
+  const Icon = step.kind === "search" ? Search : step.kind === "tool" ? Wrench : step.kind === "result" ? CornerDownRight : Sparkle;
+  return <Icon size={12} strokeWidth={2.4} className={`mt-[3px] shrink-0 ${className}`} />;
+}
+
+/** The actual reasoning summaries and tool calls behind an answer. */
+function StepList({ steps }: { steps: Step[] }) {
+  return (
+    <div className="ml-1 flex flex-col gap-2 border-l-2 border-line pl-3">
+      {steps.map((step, i) => (
+        <div key={i} className="flex gap-2.5">
+          <StepIcon step={step} />
+          {step.kind === "thought" ? (
+            <p className="line-clamp-4 text-[14px] font-medium leading-5 text-muted">{step.text.replaceAll("**", "").trim()}</p>
+          ) : (
+            <p className={`line-clamp-3 break-words font-mono text-[12px] leading-[18px] ${step.kind === "result" ? "text-muted" : "text-ink"}`}>{step.text}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Thinking({ steps }: { steps: Step[] }) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setSeconds((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2.5">
+        <PulsingDot />
+        {steps.length ? <span className="text-[15px] font-semibold text-muted">Thinking · {seconds}s</span> : null}
+      </div>
+      {steps.length ? <StepList steps={steps.slice(-8)} /> : null}
+    </div>
+  );
+}
+
+function ThoughtFor({ ms, steps }: { ms: number; steps: Step[] }) {
+  const [open, setOpen] = useState(false);
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  return (
+    <div className="flex flex-col gap-2.5">
+      <button
+        type="button"
+        disabled={!steps.length}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 self-start text-[14px] font-semibold text-muted hover:text-ink disabled:hover:text-muted"
+      >
+        Thought for {seconds} second{seconds === 1 ? "" : "s"}
+        {steps.length ? <ChevronRight size={13} strokeWidth={2.6} className={`transition-transform ${open ? "rotate-90" : ""}`} /> : null}
+      </button>
+      {open ? <StepList steps={steps} /> : null}
+    </div>
+  );
+}
 
 function changedEventIds(before: TripBundle, after: TripBundle) {
   const previous = new Map(before.days.flatMap((day) => day.events.map((event) => [event.id, `${event.updatedAt}|${event.dayId}|${event.sortOrder}`] as const)));
@@ -127,6 +194,7 @@ export function AskPanel() {
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<string | null>(null);
+  const [steps, setSteps] = useState<Step[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [conversations, setConversations] = useState<AiConversationSummary[]>([]);
   const [undoing, setUndoing] = useState<number | null>(null);
@@ -142,7 +210,7 @@ export function AskPanel() {
 
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, status]);
+  }, [messages, status, steps.length]);
 
   const suggestions = useMemo(() => {
     const last = [...messages].reverse().find((m) => m.role === "assistant");
@@ -172,6 +240,7 @@ export function AskPanel() {
       };
       setMessages((list) => [...list, optimisticUser]);
       setStatus("Thinking");
+      setSteps([]);
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -213,6 +282,7 @@ export function AskPanel() {
             if (!line.trim()) continue;
             const event = JSON.parse(line) as
               | { type: "status"; value: string }
+              | { type: "step"; step: Step }
               | { type: "conversation"; conversation: AiConversationSummary }
               | { type: "message_start"; message: Message }
               | { type: "text_delta"; delta: string }
@@ -221,6 +291,7 @@ export function AskPanel() {
               | { type: "done" }
               | { type: "error"; error: string };
             if (event.type === "status") setStatus(event.value === "thinking" ? "Thinking" : event.value);
+            else if (event.type === "step") setSteps((list) => [...list, event.step]);
             else if (event.type === "conversation") setConversationId(event.conversation.id);
             else if (event.type === "message_start") {
               const started: Message = { ...event.message, content: "" };
@@ -248,8 +319,9 @@ export function AskPanel() {
         }
       } finally {
         setStatus(null);
+        setSteps([]);
         abortRef.current = null;
-        inputRef.current?.focus();
+        if (isFinePointer()) inputRef.current?.focus();
       }
     },
     [conversationId, running, refresh, setHighlightedEventIds, setConversationId]
@@ -264,7 +336,8 @@ export function AskPanel() {
   }, [ask.draft, ask.autoSend, send]);
 
   useEffect(() => {
-    inputRef.current?.focus();
+    // No keyboard popping up on phones; desktop gets the cursor in the box.
+    if (isFinePointer()) inputRef.current?.focus();
     // Reopening the panel restores the chat that was open.
     if (askConversationId && !messages.length) {
       api<AiMessagePayload[]>(`/api/ai/history/${askConversationId}`)
@@ -293,8 +366,15 @@ export function AskPanel() {
     }
   }
 
+  function newChat() {
+    abortRef.current?.abort();
+    setHistoryOpen(false);
+    setConversationId(null);
+    setMessages([]);
+  }
+
   async function openHistory() {
-    setHistoryOpen((open) => !open);
+    setHistoryOpen(true);
     try {
       setConversations(await api<AiConversationSummary[]>("/api/ai/conversations"));
     } catch {}
@@ -312,39 +392,26 @@ export function AskPanel() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-white">
-      <div className="flex shrink-0 items-center justify-between gap-2 px-4 pb-3 pt-[max(env(safe-area-inset-top),16px)] lg:px-7 lg:pb-4 lg:pt-6">
-        <div className="flex items-center gap-2.5">
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-white">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-3 pt-[max(env(safe-area-inset-top),16px)] lg:px-6 lg:pb-4 lg:pt-6">
+        <div className="flex items-center gap-1.5">
+          <button type="button" onClick={() => void openHistory()} aria-label="Chats" className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-surface">
+            <Menu size={18} />
+          </button>
           <StarMark size={20} />
           <span className="text-[17px] font-bold tracking-[-0.01em]">Ask Northstar</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="relative">
-            <button type="button" onClick={() => void openHistory()} aria-label="Chats" className="flex h-8 w-8 items-center justify-center rounded-full border border-line hover:bg-surface">
-              <History size={15} />
-            </button>
-            <Popover open={historyOpen} onClose={() => setHistoryOpen(false)} className="right-0 top-10 max-h-[360px] w-[280px] overflow-y-auto">
-              <MenuItem
-                icon={<Plus size={16} />}
-                onClick={() => {
-                  setHistoryOpen(false);
-                  setConversationId(null);
-                  setMessages([]);
-                }}
-              >
-                New chat
-              </MenuItem>
-              {conversations.length ? <div className="mx-1 my-1 h-px bg-line" /> : null}
-              {conversations.map((conversation) => (
-                <MenuItem key={conversation.id} active={conversation.id === conversationId} onClick={() => void loadConversation(conversation.id)}>
-                  <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                    <span className="truncate text-[14px]">{conversation.title}</span>
-                    <span className="shrink-0 font-mono text-[11px] font-medium text-muted">{shortDate(conversation.updatedAt.slice(0, 10))}</span>
-                  </span>
-                </MenuItem>
-              ))}
-            </Popover>
-          </div>
+          <button
+            type="button"
+            onClick={newChat}
+            disabled={!messages.length && !running}
+            aria-label="New chat"
+            title="New chat"
+            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-surface disabled:opacity-40"
+          >
+            <SquarePen size={17} />
+          </button>
           <button
             type="button"
             onClick={closeAsk}
@@ -358,7 +425,47 @@ export function AskPanel() {
         </div>
       </div>
 
-      <div ref={threadRef} className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-2 lg:px-7">
+      {/* Chats slide in from the left. */}
+      <div className={`absolute inset-0 z-20 transition ${historyOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!historyOpen}>
+        <button
+          type="button"
+          aria-label="Close chats"
+          tabIndex={historyOpen ? 0 : -1}
+          onClick={() => setHistoryOpen(false)}
+          className={`absolute inset-0 bg-ink/25 transition-opacity duration-300 ${historyOpen ? "opacity-100" : "opacity-0"}`}
+        />
+        <aside
+          className={`absolute inset-y-0 left-0 flex w-[min(82%,320px)] flex-col bg-white pt-[max(env(safe-area-inset-top),12px)] shadow-pop transition-transform duration-300 ease-out ${
+            historyOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="px-3 pb-2 pt-3">
+            <button type="button" onClick={newChat} className="flex h-12 w-full items-center gap-2.5 rounded-[14px] bg-lane px-4 text-[16px] font-bold">
+              <SquarePen size={17} /> New chat
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-4 [mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)]">
+            {conversations.map((conversation) => (
+              <button
+                key={conversation.id}
+                type="button"
+                onClick={() => void loadConversation(conversation.id)}
+                className={`flex h-11 shrink-0 items-center justify-between gap-2 rounded-[12px] px-3.5 text-left hover:bg-surface ${
+                  conversation.id === conversationId ? "bg-surface font-bold" : "font-medium"
+                }`}
+              >
+                <span className="truncate text-[15px]">{conversation.title}</span>
+                <span className="shrink-0 font-mono text-[11px] font-medium text-muted">{shortDate(conversation.updatedAt.slice(0, 10))}</span>
+              </button>
+            ))}
+          </div>
+        </aside>
+      </div>
+
+      <div
+        ref={threadRef}
+        className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 py-4 [mask-image:linear-gradient(to_bottom,transparent,black_24px,black_calc(100%-24px),transparent)] lg:px-7"
+      >
         {!messages.length && !running ? (
           <div className="flex flex-1 flex-col justify-end pb-4">
             <p className="text-[28px] font-extrabold leading-8 tracking-display">What should we change?</p>
@@ -375,9 +482,16 @@ export function AskPanel() {
             );
           }
           const mutations = message.cards.filter((card): card is Extract<AiCard, { type: "mutation" }> => card.type === "mutation");
-          const metadata = (message.metadata ?? {}) as { undoable?: boolean; undoApplied?: boolean; sources?: Array<{ url: string; title: string }> };
+          const metadata = (message.metadata ?? {}) as {
+            undoable?: boolean;
+            undoApplied?: boolean;
+            sources?: Array<{ url: string; title: string }>;
+            steps?: Step[];
+            thoughtMs?: number;
+          };
           return (
             <div key={message.id} className="flex flex-col gap-3.5">
+              {typeof metadata.thoughtMs === "number" ? <ThoughtFor ms={metadata.thoughtMs} steps={metadata.steps ?? []} /> : null}
               {message.content ? <RichText text={message.content} /> : null}
               {mutations.length ? (
                 <ChangesCard
@@ -407,20 +521,12 @@ export function AskPanel() {
             </div>
           );
         })}
-        {running ? (
-          <div className="flex items-center gap-2.5 text-[15px] font-semibold text-muted">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-lane opacity-75" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-lane" />
-            </span>
-            {status}…
-          </div>
-        ) : null}
+        {running ? <Thinking steps={steps} /> : null}
       </div>
 
       <div className="flex shrink-0 flex-col gap-2.5 px-3 pb-[max(env(safe-area-inset-bottom),16px)] pt-3 lg:px-6 lg:pb-6">
         {!running ? (
-          <div className="scrollbar-hide flex gap-1.5 overflow-x-auto">
+          <div className="scrollbar-hide flex gap-1.5 overflow-x-auto [mask-image:linear-gradient(to_right,transparent,black_12px,black_calc(100%-12px),transparent)] px-3 -mx-3">
             {suggestions.map((suggestion) => (
               <button
                 key={suggestion}

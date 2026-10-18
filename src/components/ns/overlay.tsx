@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 function useEscape(open: boolean, onClose: () => void) {
@@ -197,3 +197,44 @@ export function Field({ label, children }: { label: string; children: React.Reac
 
 export const inputClass =
   "h-12 w-full rounded-[12px] bg-surface px-4 text-[16px] font-medium placeholder:text-faint focus:ring-2 focus:ring-ink";
+
+interface ConfirmRequest {
+  title: string;
+  actionLabel?: string;
+  resolve: (ok: boolean) => void;
+}
+
+const ConfirmContext = createContext<(title: string, actionLabel?: string) => Promise<boolean>>(async () => true);
+
+/** "Are you sure?" before destructive actions. `await confirm("Delete X?")`. */
+export function useConfirm() {
+  return useContext(ConfirmContext);
+}
+
+export function ConfirmProvider({ children }: { children: React.ReactNode }) {
+  const [request, setRequest] = useState<ConfirmRequest | null>(null);
+  const confirm = useCallback(
+    (title: string, actionLabel = "Delete") => new Promise<boolean>((resolve) => setRequest({ title, actionLabel, resolve })),
+    []
+  );
+  const close = (ok: boolean) => {
+    request?.resolve(ok);
+    setRequest(null);
+  };
+  return (
+    <ConfirmContext.Provider value={confirm}>
+      {children}
+      <Sheet open={Boolean(request)} onClose={() => close(false)}>
+        <div className="flex flex-col gap-5 pt-5">
+          <h2 className="text-[20px] font-extrabold tracking-[-0.02em]">{request?.title}</h2>
+          <div className="flex justify-end gap-2">
+            <PillButton onClick={() => close(false)}>Cancel</PillButton>
+            <PillButton tone="danger" onClick={() => close(true)}>
+              {request?.actionLabel}
+            </PillButton>
+          </div>
+        </div>
+      </Sheet>
+    </ConfirmContext.Provider>
+  );
+}

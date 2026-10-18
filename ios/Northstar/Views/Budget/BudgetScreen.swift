@@ -3,6 +3,9 @@ import SwiftUI
 struct BudgetScreen: View {
     @Environment(TripStore.self) private var store
     @State private var adding = false
+    @State private var pendingDelete: PendingDelete?
+    @State private var settler = CheckSettler()
+    @AppStorage(Prefs.checkedToBottomKey) private var checkedToBottom = false
     private let segmentColors: [Color] = [NS.ink, NS.lane, NS.faint, Color(red: 0.81, green: 0.81, blue: 0.79)]
 
     private func label(_ category: String) -> String {
@@ -45,23 +48,37 @@ struct BudgetScreen: View {
                 .listRowSeparator(.hidden)
                 .padding(.bottom, 6)
 
-                ForEach(expenses.sorted { ($0.isPaid ?? false) == ($1.isPaid ?? false) ? $0.description < $1.description : !($0.isPaid ?? false) }) { expense in
+                ForEach(expenses.sorted {
+                    if checkedToBottom {
+                        let a = settler.sortState($0.id, $0.isPaid ?? false), b = settler.sortState($1.id, $1.isPaid ?? false)
+                        if a != b { return !a }
+                    }
+                    return $0.id < $1.id
+                }) { expense in
                     HStack(spacing: 14) {
                         Button {
                             let next = !(expense.isPaid ?? false)
+                            settler.toggled(expense.id, from: !next)
                             Task { await store.updateExpense(expense.id, patch: ["isPaid": .bool(next)]) { $0.isPaid = next } }
-                        } label: { CheckBox(checked: expense.isPaid ?? false, round: true) }
+                        } label: { CheckBox(checked: expense.isPaid ?? false) }
                         .buttonStyle(.plain)
                         .disabled(!store.canEdit)
                         .accessibilityLabel(expense.description)
-                        Text(expense.description).font(NS.sans(16, .medium)).lineLimit(1)
+                        Text(expense.description)
+                            .font(NS.sans(16, .medium))
+                            .strikethrough(expense.isPaid ?? false)
+                            .foregroundStyle((expense.isPaid ?? false) ? NS.muted : NS.ink)
+                            .lineLimit(1)
                         Spacer()
-                        Text(Fmt.money(expense.amountValue, cents: true)).font(NS.mono(14, .semibold))
+                        Text(Fmt.money(expense.amountValue, cents: true))
+                            .font(NS.mono(14, .semibold))
+                            .foregroundStyle((expense.isPaid ?? false) ? NS.muted : NS.ink)
                     }
                     .frame(minHeight: 40)
-                    .swipeActions {
+                    .swipeActions(allowsFullSwipe: false) {
                         if store.canEdit {
-                            Button(role: .destructive) { Task { await store.deleteExpense(expense.id) } } label: { Label("Delete", systemImage: "trash") }
+                            Button { pendingDelete = PendingDelete(title: expense.description) { Task { await store.deleteExpense(expense.id) } } } label: { Label("Delete", systemImage: "trash") }
+                                .tint(NS.stop)
                         }
                     }
                 }
@@ -76,8 +93,9 @@ struct BudgetScreen: View {
                     }
                 }
             }
+            .confirmDelete($pendingDelete)
             .refreshable { await store.refresh() }
-            .sheet(isPresented: $adding) { AddExpenseSheet().presentationDetents([.medium]) }
+            .sheet(isPresented: $adding) { AddExpenseSheet().presentationDetents([.medium]).solidSheet() }
         }
     }
 }
@@ -112,7 +130,7 @@ struct AddExpenseSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField("What", text: $description)
+                TextField("What", text: $description).accessibilityIdentifier("expense-what")
                 TextField("Amount", text: $amount).keyboardType(.decimalPad)
                 Picker("Category", selection: $category) { ForEach(categories, id: \.self) { Text($0) } }
             }

@@ -1,14 +1,14 @@
 "use client";
 
-import { CalendarDays, Download, MoreHorizontal, NotebookPen, Pencil, Share, Trash2 } from "lucide-react";
+import { CalendarDays, Download, MoreHorizontal, NotebookPen, Pencil, Settings2, Share, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { IconButton, MenuItem, Popover } from "@/components/ns/overlay";
-import { DatesDialog, DeleteTripDialog, EditDayDialog, RenameDialog, ShareDialog } from "@/components/plan/TripDialogs";
+import { DatesDialog, DeleteTripDialog, EditDayDialog, PreferencesDialog, RenameDialog, ShareDialog } from "@/components/plan/TripDialogs";
 import { useTrip } from "@/components/trip/TripProvider";
 import type { DayJson } from "@/lib/client-types";
 
-type DialogName = "day" | "dates" | "rename" | "delete" | "share" | null;
+type DialogName = "day" | "dates" | "rename" | "delete" | "share" | "prefs" | null;
 
 export function exportTrip() {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -64,6 +64,7 @@ export function PlanActions({ day }: { day?: DayJson | null }) {
           >
             Export
           </MenuItem>
+          <MenuItem icon={<Settings2 size={16} />} onClick={() => open("prefs")}>Preferences</MenuItem>
           {isOwner ? (
             <>
               <div className="mx-1 my-1 h-px bg-line" />
@@ -76,6 +77,7 @@ export function PlanActions({ day }: { day?: DayJson | null }) {
       <DatesDialog open={dialog === "dates"} onClose={() => setDialog(null)} />
       <RenameDialog open={dialog === "rename"} onClose={() => setDialog(null)} />
       <DeleteTripDialog open={dialog === "delete"} onClose={() => setDialog(null)} />
+      <PreferencesDialog open={dialog === "prefs"} onClose={() => setDialog(null)} />
       {isOwner ? <ShareDialog open={dialog === "share"} onClose={() => setDialog(null)} /> : null}
     </div>
   );

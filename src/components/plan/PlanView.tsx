@@ -6,11 +6,13 @@ import { BedDouble, Car, ChevronDown, ChevronLeft, ChevronRight, MapPin, Noteboo
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useDefaultLayout } from "react-resizable-panels";
 
 import { StarMark } from "@/components/brand/Logo";
 import { AskPanel } from "@/components/ask/AskPanel";
 import { googleMapsDirectionsUrl, PlanMap, type MapPin as Pin } from "@/components/map/PlanMap";
 import { Sheet } from "@/components/ns/overlay";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { AddStop } from "@/components/plan/AddStop";
 import { AskBar } from "@/components/plan/AskBar";
 import { exportTrip, PlanActions } from "@/components/plan/PlanActions";
@@ -21,7 +23,7 @@ import { useWeatherHigh } from "@/components/plan/useWeather";
 import { TripList } from "@/components/shell/TripSwitcher";
 import { useTrip } from "@/components/trip/TripProvider";
 import { useRoute, type LatLng } from "@/components/trip/useRoute";
-import { useIsDesktop } from "@/hooks/useMediaQuery";
+import { useHydrated, useIsDesktop } from "@/hooks/useMediaQuery";
 import type { DayJson, EventJson } from "@/lib/client-types";
 import { dateRange, dayChipLabel, duration, miles, shortDate, weekday } from "@/lib/format";
 
@@ -273,9 +275,11 @@ function TripColumn() {
           return (
             <div
               key={day.id}
-              className="flex h-[44px] items-center gap-3 rounded-[10px] px-3 transition hover:bg-surface sm:gap-3.5"
+              className="relative flex h-[44px] items-center gap-3 rounded-[10px] px-3 transition hover:bg-surface sm:gap-3.5"
             >
-              <Link href={`/app/days/${day.date}`} className="flex min-w-0 flex-1 items-center gap-3 sm:gap-3.5">
+              {/* The whole row opens the day; "Plan this day" sits above the link. */}
+              <Link href={`/app/days/${day.date}`} aria-label={`Day ${day.dayNumber}`} className="absolute inset-0 rounded-[10px]" />
+              <div className="pointer-events-none flex min-w-0 flex-1 items-center gap-3 sm:gap-3.5">
                 <span className="w-11 shrink-0 font-mono text-[12px] font-medium text-muted">{dayChipLabel(day.date)}</span>
                 <span
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-semibold ${
@@ -285,7 +289,7 @@ function TripColumn() {
                   {day.dayNumber}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{day.title || day.location || `Day ${day.dayNumber}`}</span>
-              </Link>
+              </div>
               {empty && canEdit ? (
                 <button
                   type="button"
@@ -295,12 +299,12 @@ function TripColumn() {
                       true
                     )
                   }
-                  className="flex shrink-0 items-center gap-1.5 text-[13px] font-bold"
+                  className="relative z-10 flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-[13px] font-bold hover:bg-white"
                 >
                   <StarMark size={13} core={null} /> Plan this day
                 </button>
               ) : (
-                <span className="flex w-[92px] shrink-0 items-center gap-[3px]">
+                <span className="pointer-events-none flex w-[92px] shrink-0 items-center gap-[3px]">
                   {day.events.slice(0, 9).map((event) => (
                     <span key={event.id} className="h-[7px] w-[7px] shrink-0 rounded-full bg-ink" />
                   ))}
@@ -335,10 +339,20 @@ function MobileTripSheet({ open, onClose }: { open: boolean; onClose: () => void
   );
 }
 
+/** Saved list/map split; safe during server rendering. */
+const layoutStorage = {
+  getItem: (key: string) => (typeof window === "undefined" ? null : window.localStorage.getItem(key)),
+  setItem: (key: string, value: string) => {
+    if (typeof window !== "undefined") window.localStorage.setItem(key, value);
+  },
+};
+
 export function PlanView({ date }: { date: string | null }) {
   const { bundle, ask, highlightedEventIds } = useTrip();
+  const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: "northstar-plan", storage: layoutStorage });
   const router = useRouter();
   const isDesktop = useIsDesktop();
+  const hydrated = useHydrated();
   // Selection is scoped to the day it was made on, so switching days clears it without an effect.
   const [selection, setSelection] = useState<{ date: string | null; id: number | null }>({ date, id: null });
   const selectedId = selection.date === date ? selection.id : null;
@@ -395,22 +409,61 @@ export function PlanView({ date }: { date: string | null }) {
     );
   }
 
+  if (!hydrated) return <div className="h-full bg-white" />;
+
+  const mapArea = (
+    <>
+      {isDesktop && ask.open ? (
+        <AskPanel />
+      ) : (
+        <PlanMap
+          pins={pins}
+          extraPins={extraPins}
+          route={route?.coordinates ?? null}
+          selectedId={day ? selectedId : null}
+          onSelect={(id) => (day ? setSelectedId(id) : router.push(`/app/days/${bundle.days.find((d) => d.id === id)?.date}`))}
+          mapsUrl={isDesktop ? mapsUrl : null}
+        />
+      )}
+    </>
+  );
+
+  const listArea = (
+    <>
+      <div className="flex justify-center pb-2.5 pt-2 lg:hidden">
+        <div className="h-[5px] w-9 rounded-full bg-[#D6D6D2]" />
+      </div>
+      <DayStrip activeDate={day?.date ?? null} />
+      <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+        {day ? <DayColumn day={day} selectedId={selectedId} setSelectedId={setSelectedId} route={route} /> : <TripColumn />}
+        <div className="h-6 shrink-0" />
+      </div>
+      <AskBar />
+    </>
+  );
+
+  // Desktop: list and map side by side with a draggable divider.
+  if (isDesktop) {
+    return (
+      <div className="flex h-full overflow-hidden">
+        <ResizablePanelGroup orientation="horizontal" defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
+          <ResizablePanel id="list" defaultSize="42" minSize="400px" maxSize="70">
+            <section className="relative flex h-full min-h-0 flex-col bg-white">{listArea}</section>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel id="map" minSize="25">
+            <div className="relative h-full">{mapArea}</div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full flex-col overflow-y-auto overscroll-contain lg:flex-row lg:overflow-hidden">
-      <div className="sticky top-0 z-0 h-[40dvh] min-h-[260px] shrink-0 lg:static lg:order-2 lg:h-full lg:min-h-0 lg:flex-1">
-        {isDesktop && ask.open ? (
-          <AskPanel />
-        ) : (
-          <PlanMap
-            pins={pins}
-            extraPins={extraPins}
-            route={route?.coordinates ?? null}
-            selectedId={day ? selectedId : null}
-            onSelect={(id) => (day ? setSelectedId(id) : router.push(`/app/days/${bundle.days.find((d) => d.id === id)?.date}`))}
-            mapsUrl={isDesktop ? mapsUrl : null}
-          />
-        )}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] flex items-center justify-between px-4 pt-[max(env(safe-area-inset-top),12px)] lg:hidden">
+    <div className="flex h-full flex-col overflow-y-auto overscroll-contain">
+      <div className="sticky top-0 z-0 h-[40dvh] min-h-[260px] shrink-0">
+        {mapArea}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] flex items-center justify-between px-4 pt-[max(env(safe-area-inset-top),12px)]">
           <button
             type="button"
             onClick={() => setTripSheet(true)}
@@ -425,16 +478,8 @@ export function PlanView({ date }: { date: string | null }) {
         </div>
       </div>
 
-      <section className="relative z-10 -mt-6 flex min-h-[66dvh] shrink-0 flex-col rounded-t-[24px] bg-white pb-28 shadow-[0_-4px_20px_rgba(17,17,16,0.08)] lg:order-1 lg:mt-0 lg:h-full lg:min-h-0 lg:w-[540px] lg:rounded-none lg:border-r lg:border-line lg:pb-0 lg:shadow-none">
-        <div className="flex justify-center pb-2.5 pt-2 lg:hidden">
-          <div className="h-[5px] w-9 rounded-full bg-[#D6D6D2]" />
-        </div>
-        <DayStrip activeDate={day?.date ?? null} />
-        <div className="flex flex-col lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-          {day ? <DayColumn day={day} selectedId={selectedId} setSelectedId={setSelectedId} route={route} /> : <TripColumn />}
-          <div className="h-6 shrink-0" />
-        </div>
-        <AskBar />
+      <section className="relative z-10 -mt-6 flex min-h-[66dvh] shrink-0 flex-col rounded-t-[24px] bg-white pb-28 shadow-[0_-4px_20px_rgba(17,17,16,0.08)]">
+        {listArea}
       </section>
       <MobileTripSheet open={tripSheet} onClose={() => setTripSheet(false)} />
     </div>

@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { Field, inputClass, PillButton, Sheet } from "@/components/ns/overlay";
+import { Field, inputClass, PillButton, Sheet, useConfirm } from "@/components/ns/overlay";
 import { useTrip } from "@/components/trip/TripProvider";
 import { api } from "@/lib/api-client";
 import type { DayJson } from "@/lib/client-types";
+import { usePrefs, type Prefs } from "@/lib/prefs";
 
 export function EditDayDialog({ day, open, onClose }: { day: DayJson; open: boolean; onClose: () => void }) {
   return (
@@ -155,38 +156,85 @@ function RenameForm({ onClose }: { onClose: () => void }) {
 }
 
 export function DeleteTripDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Sheet open={open} onClose={onClose} title="Delete trip?">
+      <DeleteTripForm onClose={onClose} />
+    </Sheet>
+  );
+}
+
+/** Deleting a trip requires typing its name. */
+function DeleteTripForm({ onClose }: { onClose: () => void }) {
   const { bundle } = useTrip();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const stops = bundle.days.reduce((sum, day) => sum + day.events.length, 0);
+  const [typed, setTyped] = useState("");
+  const matches = typed.trim() === bundle.trip.name.trim();
   return (
-    <Sheet open={open} onClose={onClose} title="Delete trip?">
-      <div className="flex flex-col gap-4 pt-2">
-        <p className="text-[15px] font-medium">
-          {bundle.trip.name} and its {bundle.days.length} days and {stops} stops will be permanently deleted.
-        </p>
-        <div className="flex justify-end gap-2">
-          <PillButton onClick={onClose}>Cancel</PillButton>
-          <PillButton
-            tone="danger"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await api(`/api/trips/${bundle.trip.id}`, { method: "DELETE" });
-                onClose();
-                router.push("/app");
-                router.refresh();
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : "Couldn't delete the trip.");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <Trash2 size={14} /> Delete
-          </PillButton>
-        </div>
+    <form
+      className="flex flex-col gap-4 pt-2"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        if (!matches || busy) return;
+        setBusy(true);
+        try {
+          await api(`/api/trips/${bundle.trip.id}`, { method: "DELETE" });
+          onClose();
+          router.push("/app");
+          router.refresh();
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Couldn't delete the trip.");
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <p className="text-[15px] font-medium">
+        Type <span className="font-bold">{bundle.trip.name}</span> to confirm.
+      </p>
+      <input
+        autoFocus
+        value={typed}
+        onChange={(e) => setTyped(e.target.value)}
+        placeholder={bundle.trip.name}
+        autoComplete="off"
+        className={inputClass}
+        aria-label="Trip name"
+      />
+      <div className="flex justify-end gap-2">
+        <PillButton onClick={onClose}>Cancel</PillButton>
+        <PillButton tone="danger" type="submit" disabled={busy || !matches}>
+          <Trash2 size={14} /> Delete trip
+        </PillButton>
+      </div>
+    </form>
+  );
+}
+
+export function PreferencesDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [prefs, setPref] = usePrefs();
+  const rows: Array<{ key: keyof Prefs; label: string }> = [
+    { key: "use24Hour", label: "24-hour time" },
+    { key: "checkedToBottom", label: "Move checked items to bottom" },
+  ];
+  return (
+    <Sheet open={open} onClose={onClose} title="Preferences">
+      <div className="flex flex-col divide-y divide-line pt-1">
+        {rows.map((row) => (
+          <label key={row.key} className="flex h-14 cursor-pointer items-center justify-between gap-4">
+            <span className="text-[16px] font-semibold">{row.label}</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={prefs[row.key]}
+              aria-label={row.label}
+              onClick={() => setPref(row.key, !prefs[row.key])}
+              className={`relative h-[30px] w-[50px] shrink-0 rounded-full transition ${prefs[row.key] ? "bg-go" : "bg-line"}`}
+            >
+              <span className={`absolute top-[3px] h-6 w-6 rounded-full bg-white shadow transition-all ${prefs[row.key] ? "left-[23px]" : "left-[3px]"}`} />
+            </button>
+          </label>
+        ))}
       </div>
     </Sheet>
   );
@@ -203,6 +251,7 @@ interface Member {
 
 export function ShareDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { bundle } = useTrip();
+  const confirm = useConfirm();
   const [members, setMembers] = useState<Member[]>([]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"collaborator" | "viewer">("collaborator");
@@ -293,6 +342,7 @@ export function ShareDialog({ open, onClose }: { open: boolean; onClose: () => v
                     type="button"
                     aria-label="Remove"
                     onClick={async () => {
+                      if (!(await confirm(`Remove ${member.fullName ?? member.email ?? "this person"}?`, "Remove"))) return;
                       try {
                         await api(`/api/trips/${tripId}/members/${member.membershipId}`, { method: "DELETE" });
                         setMembers((list) => list.filter((m) => m.userId !== member.userId));
