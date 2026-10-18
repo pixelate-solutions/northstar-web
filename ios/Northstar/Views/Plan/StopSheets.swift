@@ -312,8 +312,8 @@ struct AddStopSheet: View {
     @Environment(\.dismiss) private var dismiss
     let day: Day
     @State private var search = PlaceSearch()
-    @State private var hasTime = false
-    @State private var time = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+    /// New stops default to the current time until it's changed.
+    @State private var time = Date()
 
     private var center: CLLocationCoordinate2D? {
         let located = day.events.compactMap { s -> CLLocationCoordinate2D? in
@@ -328,8 +328,7 @@ struct AddStopSheet: View {
         NavigationStack {
             List {
                 Section {
-                    Toggle(isOn: $hasTime) { Text("Time").font(NS.sans(16, .semibold)) }
-                    if hasTime { DatePicker("At", selection: $time, displayedComponents: .hourAndMinute) }
+                    DatePicker(selection: $time, displayedComponents: .hourAndMinute) { Text("Time").font(NS.sans(16, .semibold)) }
                 }
                 if !search.query.trimmingCharacters(in: .whitespaces).isEmpty {
                     Section {
@@ -373,7 +372,7 @@ struct AddStopSheet: View {
         await store.addStop(
             dayId: day.id,
             title: name,
-            startTime: hasTime ? Fmt.timeString(time) : nil,
+            startTime: Fmt.timeString(time),
             category: CategoryInfo.guess("\(name) \(place?.address ?? "")"),
             location: address,
             lat: place?.coordinate.latitude,

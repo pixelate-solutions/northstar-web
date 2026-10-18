@@ -339,6 +339,19 @@ final class NorthstarUITests: XCTestCase {
         return (CGFloat(data[0]) / 255, CGFloat(data[1]) / 255, CGFloat(data[2]) / 255)
     }
 
+    /// Screenshot check for a day whose stops have no times (column collapses, add-stop circle lines up).
+    func testTimelessDayLayout() throws {
+        signInIfNeeded()
+        app.buttons["Trips"].tap()
+        let trip = app.buttons["My First Trip"]
+        guard trip.waitForExistence(timeout: 5) else { throw XCTSkip("No 'My First Trip' on this account") }
+        trip.tap()
+        sleep(3)
+        app.buttons.matching(identifier: "Day 1").firstMatch.tap()
+        sleep(3)
+        attach("timeless-day")
+    }
+
     func testEditProfileName() throws {
         signInIfNeeded()
         func rename(to last: String) {

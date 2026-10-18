@@ -14,6 +14,12 @@ struct DayContent: View {
 
     private var stops: [Stop] { TripStore.sortedStops(day.events) }
 
+    /// Width of the time column; none at all when no stop on the day has a time, so rows sit at the left edge.
+    private var timeWidth: CGFloat {
+        guard stops.contains(where: { $0.startTime != nil }) else { return 0 }
+        return use24Hour ? 40 : 58
+    }
+
     private func coordinate(_ stop: Stop) -> CLLocationCoordinate2D? {
         guard stop.hasCoordinates, let lat = stop.latitude, let lng = stop.longitude else { return nil }
         return .init(latitude: lat, longitude: lng)
@@ -67,12 +73,12 @@ struct DayContent: View {
             Section {
                 ForEach(Array(stops.enumerated()), id: \.element.id) { index, stop in
                     VStack(spacing: 0) {
-                        StopRowView(stop: stop, number: index + 1, highlighted: store.highlightedStopIds.contains(stop.id), use24Hour: use24Hour)
+                        StopRowView(stop: stop, number: index + 1, highlighted: store.highlightedStopIds.contains(stop.id), use24Hour: use24Hour, timeWidth: timeWidth)
                             .contentShape(Rectangle())
                             .onTapGesture { onEditStop(stop) }
                         if index < stops.count - 1 {
                             let leg = leg(after: index)
-                            LegView(leg: leg, from: index + 1, focused: focusedLeg == stop.id, use24Hour: use24Hour)
+                            LegView(leg: leg, from: index + 1, focused: focusedLeg == stop.id, timeWidth: timeWidth)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     guard leg != nil else { return }
@@ -98,7 +104,7 @@ struct DayContent: View {
                 if store.canEdit {
                     Button(action: onAddStop) {
                         HStack(spacing: 12) {
-                            Spacer().frame(width: 40)
+                            if timeWidth > 0 { Spacer().frame(width: timeWidth) }
                             Image(systemName: "plus").font(.system(size: 12, weight: .bold))
                                 .frame(width: 24, height: 24)
                                 .overlay(Circle().strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [3, 3])).foregroundStyle(NS.faint))
@@ -131,15 +137,18 @@ struct StopRowView: View {
     let number: Int
     let highlighted: Bool
     var use24Hour = false
+    var timeWidth: CGFloat = 58
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(Fmt.clock(stop.startTime, use24Hour: use24Hour))
-                .font(NS.mono(12, highlighted ? .bold : .medium))
-                .foregroundStyle(highlighted ? NS.ink : NS.muted)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(width: use24Hour ? 40 : 58, alignment: .leading)
+            if timeWidth > 0 {
+                Text(Fmt.clock(stop.startTime, use24Hour: use24Hour))
+                    .font(NS.mono(12, highlighted ? .bold : .medium))
+                    .foregroundStyle(highlighted ? NS.ink : NS.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(width: timeWidth, alignment: .leading)
+            }
             // Booked stops get a green number instead of a trailing check mark.
             Text("\(number)")
                 .font(NS.mono(11, .semibold))
@@ -167,12 +176,12 @@ struct LegView: View {
     let leg: RouteLeg?
     let from: Int
     var focused = false
-    var use24Hour = false
+    var timeWidth: CGFloat = 58
 
     var body: some View {
         let drive = (leg?.duration ?? 0) > 30 * 60
         HStack(spacing: 12) {
-            Spacer().frame(width: use24Hour ? 40 : 58)
+            if timeWidth > 0 { Spacer().frame(width: timeWidth) }
             // Yellow only for the leg focused on the map; long drives just get a bolder label.
             Rectangle().fill(focused ? NS.lane : NS.line).frame(width: focused ? 3 : 2, height: 26).frame(width: 24)
             if let leg {

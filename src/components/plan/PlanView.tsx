@@ -134,6 +134,8 @@ function DayColumn({
   const prev = bundle.days[index - 1];
   const next = bundle.days[index + 1];
   const stops = day.events;
+  // No time column at all when nothing on the day has a time.
+  const showTimes = stops.some((stop) => Boolean(stop.startTime));
   const coords = stops.map(coordsOf);
   const center = useMemo(() => {
     const found = coords.filter((c): c is LatLng => Boolean(c));
@@ -226,7 +228,7 @@ function DayColumn({
             {stops.map((event, i) => (
               <div key={event.id}>
                 {selectedId === event.id ? (
-                  <StopEditor key={event.id} event={event} number={i + 1} near={center} onClose={() => setSelectedId(null)} />
+                  <StopEditor key={event.id} event={event} number={i + 1} near={center} showTime={showTimes} onClose={() => setSelectedId(null)} />
                 ) : (
                   <StopRow
                     event={event}
@@ -234,15 +236,16 @@ function DayColumn({
                     selected={false}
                     highlighted={highlightedEventIds.has(event.id)}
                     draggable={canEdit && event.id > 0}
+                    showTime={showTimes}
                     onClick={() => setSelectedId(event.id)}
                   />
                 )}
-                {i < stops.length - 1 && !dragging ? <Leg label={legLabels.get(i)?.label ?? null} drive={legLabels.get(i)?.drive} /> : null}
+                {i < stops.length - 1 && !dragging ? <Leg label={legLabels.get(i)?.label ?? null} drive={legLabels.get(i)?.drive} showTime={showTimes} /> : null}
               </div>
             ))}
           </SortableContext>
         </DndContext>
-        {canEdit ? <AddStop dayId={day.id} near={center} onAdded={(id) => setSelectedId(id)} /> : null}
+        {canEdit ? <AddStop dayId={day.id} near={center} showTime={showTimes} onAdded={(id) => setSelectedId(id)} /> : null}
         {!stops.length && !canEdit ? <p className="px-3 py-6 text-[15px] font-medium text-muted">Nothing planned yet.</p> : null}
       </div>
     </>

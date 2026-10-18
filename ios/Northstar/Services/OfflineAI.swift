@@ -164,7 +164,7 @@ struct AddStopTool: Tool {
         await report(.init(kind: "tool", text: "add_stop · day: \(arguments.dayNumber) · title: \(arguments.title)\(arguments.time.map { " · time: \($0)" } ?? "")"))
         let dayId = await MainActor.run { store.days.first { $0.dayNumber == arguments.dayNumber }?.id }
         guard let dayId else { return "There is no Day \(arguments.dayNumber)." }
-        let time = arguments.time.flatMap(Self.normalized)
+        let time = arguments.time.flatMap(Self.normalized) ?? Fmt.timeString(Date())
         let category = CategoryInfo.all.contains { $0.value == arguments.category } ? arguments.category : CategoryInfo.guess(arguments.title)
         await store.addStop(dayId: dayId, title: arguments.title, startTime: time, category: category, location: arguments.location, lat: nil, lng: nil)
         await report(.init(kind: "result", text: "Added \(arguments.title) to Day \(arguments.dayNumber)"))

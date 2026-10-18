@@ -25,6 +25,7 @@ test("mobile: day strip, add a stop, lists tabs, Ask sheet", async ({ page }) =>
   await page.getByRole("button", { name: "Done" }).click();
   const created = (await (await page.request.get("/api/trip")).json()).days[1].events.find((e: { title: string }) => e.title === title);
   expect(created).toBeTruthy();
+  expect(created.startTime, "stops added without a time get the current time").not.toBeNull();
   await page.request.delete(`/api/events/${created.id}`);
 
   // Bottom tabs + Lists segmented control.
