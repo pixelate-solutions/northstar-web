@@ -1,0 +1,2 @@
+// Public values only (publishable key is safe to ship in the app).
+NORTHSTAR_CLERK_PUBLISHABLE_KEY = pk_test_ZGFybGluZy12dWx0dXJlLTkuY2xlcmsuYWNjb3VudHMuZGV2JA

@@ -1,0 +1,230 @@
+import ClerkKit
+import MapKit
+import SwiftUI
+
+struct PlanScreen: View {
+    @Environment(TripStore.self) private var store
+    let onAsk: (AskDraft) -> Void
+
+    @State private var selectedDayId: Int?
+    @State private var editingStop: Stop?
+    @State private var addingStop = false
+    @State private var editingDay: Day?
+    @State private var sheet: PlanSheet?
+    @State private var reordering = false
+    @State private var camera: MapCameraPosition = .automatic
+    @State private var routes = RouteService.shared
+
+    private var selectedDay: Day? { selectedDayId.flatMap { store.day(id: $0) } }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .top) {
+                PlanMap(day: selectedDay, days: store.days, highlighted: store.highlightedStopIds, camera: $camera, onSelectDay: { selectedDayId = $0 }, onSelectStop: { editingStop = $0 })
+                mapOverlay
+            }
+            .frame(height: UIScreen.main.bounds.height * 0.36)
+
+            VStack(spacing: 0) {
+                Capsule().fill(NS.line).frame(width: 36, height: 5).padding(.top, 8).padding(.bottom, 10)
+                DayStrip(days: store.days, selectedDayId: $selectedDayId)
+                if let day = selectedDay {
+                    DayContent(day: day, reordering: $reordering, onEditStop: { editingStop = $0 }, onAddStop: { addingStop = true }, onEditDay: { editingDay = day })
+                } else {
+                    TripContent(onOpenDay: { selectedDayId = $0 }, onAsk: onAsk)
+                }
+            }
+            .background(Color.white)
+            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+            .shadow(color: .black.opacity(0.08), radius: 10, y: -4)
+            .padding(.top, -24)
+        }
+        .background(Color.white)
+        .onChange(of: selectedDayId) { _, _ in
+            withAnimation(.easeInOut(duration: 0.35)) { camera = .automatic }
+            reordering = false
+        }
+        .sheet(item: $editingStop) { stop in
+            StopEditorSheet(stop: stop).presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $addingStop) {
+            if let day = selectedDay { AddStopSheet(day: day).presentationDetents([.large]) }
+        }
+        .sheet(item: $editingDay) { day in
+            EditDaySheet(day: day).presentationDetents([.medium, .large])
+        }
+        .sheet(item: $sheet) { sheet in
+            switch sheet {
+            case .newTrip: NewTripSheet(onDraft: { text in onAsk(AskDraft(text: text, autoSend: true)) })
+            case .rename: RenameTripSheet().presentationDetents([.height(240)])
+            case .dates: DatesSheet().presentationDetents([.medium])
+            case .share: ShareSheet()
+            case .account: AccountSheet().presentationDetents([.height(260)])
+            }
+        }
+    }
+
+    private var mapOverlay: some View {
+        HStack {
+            TripMenu(onNewTrip: { sheet = .newTrip }, onRename: { sheet = .rename }, onDates: { sheet = .dates }, onShare: { sheet = .share }, onDeleted: { selectedDayId = nil }, onSwitched: { selectedDayId = nil })
+            Spacer()
+            Button { sheet = .account } label: {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(NS.ink)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(.white))
+                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+            }
+            .accessibilityLabel("Account")
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+}
+
+enum PlanSheet: String, Identifiable {
+    case newTrip, rename, dates, share, account
+    var id: String { rawValue }
+}
+
+// MARK: Map
+
+struct PlanMap: View {
+    let day: Day?
+    let days: [Day]
+    let highlighted: Set<Int>
+    @Binding var camera: MapCameraPosition
+    let onSelectDay: (Int) -> Void
+    let onSelectStop: (Stop) -> Void
+    @State private var routes = RouteService.shared
+
+    private struct MapPoint: Identifiable {
+        let id: Int
+        let label: String
+        let title: String
+        let coordinate: CLLocationCoordinate2D
+        let highlighted: Bool
+        let stop: Stop?
+    }
+
+    private var points: [MapPoint] {
+        if let day {
+            return TripStore.sortedStops(day.events).enumerated().compactMap { index, stop in
+                guard stop.hasCoordinates, let lat = stop.latitude, let lng = stop.longitude else { return nil }
+                return MapPoint(id: stop.id, label: "\(index + 1)", title: stop.title, coordinate: .init(latitude: lat, longitude: lng), highlighted: highlighted.contains(stop.id), stop: stop)
+            }
+        }
+        return TripAnchors.compute(days).map { MapPoint(id: $0.day.id, label: "\($0.day.dayNumber)", title: $0.day.displayTitle, coordinate: $0.coordinate, highlighted: false, stop: nil) }
+    }
+
+    private struct Segment: Identifiable {
+        let id: String
+        let line: MKPolyline?
+        let a: CLLocationCoordinate2D
+        let b: CLLocationCoordinate2D
+    }
+
+    var body: some View {
+        let pts = points
+        // Resolved here (not inside the Map builder) so route updates re-render the map.
+        let segments = zip(pts, pts.dropFirst()).map { a, b in
+            Segment(id: "\(a.id)-\(b.id)", line: routes.polyline(a.coordinate, b.coordinate), a: a.coordinate, b: b.coordinate)
+        }
+        Map(position: $camera) {
+            ForEach(segments) { segment in
+                if let line = segment.line {
+                    MapPolyline(line).stroke(NS.ink, style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+                    MapPolyline(line).stroke(NS.lane, style: StrokeStyle(lineWidth: 4.5, lineCap: .round, lineJoin: .round))
+                } else {
+                    MapPolyline(coordinates: [segment.a, segment.b]).stroke(NS.ink.opacity(0.35), style: StrokeStyle(lineWidth: 3, dash: [6, 6]))
+                }
+            }
+            ForEach(day?.locations ?? []) { pin in
+                if let lat = Double(pin.lat), let lng = Double(pin.lng) {
+                    Annotation(pin.name, coordinate: .init(latitude: lat, longitude: lng)) {
+                        Circle().fill(NS.faint).frame(width: 10, height: 10).overlay(Circle().stroke(.white, lineWidth: 2))
+                    }
+                    .annotationTitles(.hidden)
+                }
+            }
+            ForEach(pts) { point in
+                Annotation(point.title, coordinate: point.coordinate) {
+                    Button {
+                        if let stop = point.stop { onSelectStop(stop) } else { onSelectDay(point.id) }
+                    } label: {
+                        Text(point.label)
+                            .font(NS.mono(point.label.count > 2 ? 9 : 11, .semibold))
+                            .foregroundStyle(point.highlighted ? NS.ink : .white)
+                            .frame(width: 24, height: 24)
+                            .background(Circle().fill(point.highlighted ? NS.lane : NS.ink))
+                            .overlay(Circle().stroke(point.highlighted ? NS.ink : .white, lineWidth: 2))
+                            .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+                    }
+                }
+                .annotationTitles(day == nil ? .visible : .hidden)
+            }
+        }
+        .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+        .task(id: pts.map { "\($0.id)@\($0.coordinate.latitude),\($0.coordinate.longitude)" }.joined(separator: "|")) {
+            routes.ensure(pts.map { ($0.id, $0.coordinate) })
+        }
+    }
+}
+
+enum TripAnchors {
+    struct Anchor { let day: Day; let coordinate: CLLocationCoordinate2D }
+
+    /// One point per day (where the day ends), ignoring flights and far-away outliers.
+    static func compute(_ days: [Day]) -> [Anchor] {
+        let anchors: [Anchor] = days.compactMap { day in
+            let located = TripStore.sortedStops(day.events).filter {
+                $0.hasCoordinates && $0.category != "flight" && !$0.title.lowercased().contains("airport")
+            }
+            guard let last = located.last, let lat = last.latitude, let lng = last.longitude else { return nil }
+            return Anchor(day: day, coordinate: .init(latitude: lat, longitude: lng))
+        }
+        guard anchors.count >= 3 else { return anchors }
+        let lats = anchors.map(\.coordinate.latitude).sorted(), lngs = anchors.map(\.coordinate.longitude).sorted()
+        let center = CLLocation(latitude: lats[lats.count / 2], longitude: lngs[lngs.count / 2])
+        return anchors.filter { CLLocation(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude).distance(from: center) < 1_200_000 }
+    }
+}
+
+// MARK: Day strip
+
+struct DayStrip: View {
+    let days: [Day]
+    @Binding var selectedDayId: Int?
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    Button { selectedDayId = nil } label: {
+                        Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(width: 44, height: 36)
+                            .background(Capsule().fill(selectedDayId == nil ? NS.lane : NS.surface))
+                    }
+                    .accessibilityLabel("Whole trip")
+                    .id(-1)
+                    ForEach(days) { day in
+                        Button { selectedDayId = day.id } label: {
+                            Text("\(day.dayNumber)")
+                                .font(NS.mono(13, selectedDayId == day.id ? .bold : .semibold))
+                                .frame(width: 36, height: 36)
+                                .background(Circle().fill(selectedDayId == day.id ? NS.lane : NS.surface))
+                        }
+                        .accessibilityLabel("Day \(day.dayNumber)")
+                        .id(day.id)
+                    }
+                }
+                .foregroundStyle(NS.ink)
+                .padding(.horizontal, 16)
+            }
+            .onChange(of: selectedDayId) { _, id in withAnimation { proxy.scrollTo(id ?? -1, anchor: .center) } }
+        }
+        .padding(.bottom, 12)
+    }
+}

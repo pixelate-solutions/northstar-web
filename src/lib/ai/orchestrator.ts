@@ -2323,6 +2323,20 @@ async function executeToolCall(input: {
           summary: `Skipped duplicate event "${parsedArgs.title}" on ${parsedArgs.date}.`,
         };
       }
+      // Slot the new stop chronologically among the day's existing stops.
+      const ordered = [...existingDayEvents].sort(
+        (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.startTime ?? "").localeCompare(b.startTime ?? "")
+      );
+      const insertAt = parsedArgs.startTime
+        ? ordered.findIndex((event) => event.startTime !== null && event.startTime > parsedArgs.startTime)
+        : -1;
+      const position = insertAt === -1 ? ordered.length : insertAt;
+      for (const [index, event] of ordered.entries()) {
+        const nextOrder = index < position ? index : index + 1;
+        if ((event.sortOrder ?? 0) !== nextOrder) {
+          await input.db.update(events).set({ sortOrder: nextOrder }).where(eq(events.id, event.id));
+        }
+      }
       const [created] = await input.db
         .insert(events)
         .values({
@@ -2338,7 +2352,7 @@ async function executeToolCall(input: {
           tip: cleanNullable(parsedArgs.tip) ?? null,
           cost: parsedArgs.cost === null ? null : String(parsedArgs.cost),
           isBooked: parsedArgs.isBooked,
-          sortOrder: day.dayNumber * 100 + 1,
+          sortOrder: position,
         })
         .returning();
 
