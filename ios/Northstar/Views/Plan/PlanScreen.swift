@@ -13,7 +13,11 @@ struct PlanScreen: View {
     @State private var camera: MapCameraPosition = .automatic
     @State private var focusedLeg: Int?
     @State private var drawer: DrawerDetent = .half
-    @GestureState private var dragOffset: CGFloat = 0
+    /// Finger translation while dragging. Plain @State (not @GestureState): @GestureState snaps back to 0 the
+    /// instant the finger lifts, outside any animation, which flashed the drawer to its old height for a frame
+    /// before the spring started. Here the reset happens inside the same animation that moves to the new detent.
+    @State private var dragOffset: CGFloat = 0
+    @GestureState private var isDragging = false
 
     private var selectedDay: Day? { selectedDayId.flatMap { store.day(id: $0) } }
 
@@ -27,8 +31,7 @@ struct PlanScreen: View {
             let height = raw > full ? full + (raw - full) * 0.25 : raw < heights[.peek]! ? heights[.peek]! - (heights[.peek]! - raw) * 0.25 : raw
 
             ZStack(alignment: .bottom) {
-                // The map never resizes while dragging; only its safe area moves once the drawer settles,
-                // so MapKit keeps the route visible above the drawer without re-laying out every frame.
+                // The map never resizes or re-centers because of the drawer, so it stays perfectly still while dragging.
                 PlanMap(
                     day: selectedDay,
                     days: store.days,
@@ -37,7 +40,7 @@ struct PlanScreen: View {
                     camera: $camera,
                     onSelectStop: { editingStop = $0 }
                 )
-                .safeAreaPadding(.bottom, min(settled, heights[.half]!) - 24)
+                .safeAreaPadding(.bottom, heights[.half]! - 24)
                 .ignoresSafeArea(edges: .top)
 
                 VStack(spacing: 0) {
@@ -45,8 +48,11 @@ struct PlanScreen: View {
                     Spacer()
                 }
 
-                drawerView(height: height, settled: settled, heights: heights)
+                drawerView(height: height, settled: settled, heights: heights, bottomInset: geo.safeAreaInsets.bottom)
             }
+            #if DEBUG
+            .task { await runDrawerDemoIfRequested(heights: heights) }
+            #endif
         }
         .background(Color.white)
         .onChange(of: selectedDayId) { _, _ in
@@ -80,8 +86,12 @@ struct PlanScreen: View {
         }
     }
 
-    /// The drawer is laid out once at full height and slid with an offset, so dragging is a pure transform.
-    private func drawerView(height: CGFloat, settled: CGFloat, heights: [DrawerDetent: CGFloat]) -> some View {
+    private static let settleSpring = (stiffness: 320.0, damping: 34.0)
+
+    /// The drawer is laid out once and slid with an offset, so dragging is a pure transform.
+    /// Its white surface extends far below its frame, so it covers the screen down to the bottom edge
+    /// (under the tab bar) at every height, including while rubber-banding past full.
+    private func drawerView(height: CGFloat, settled: CGFloat, heights: [DrawerDetent: CGFloat], bottomInset: CGFloat) -> some View {
         let full = heights[.full]!
         return VStack(spacing: 0) {
             // Drag handle region: grabber + day strip.
@@ -96,15 +106,14 @@ struct PlanScreen: View {
             .gesture(
                 // Measured in global space: the handle moves with the drawer, so local coordinates would feed back.
                 DragGesture(minimumDistance: 2, coordinateSpace: .global)
-                    .updating($dragOffset) { value, state, _ in state = value.translation.height }
+                    .updating($isDragging) { _, state, _ in state = true }
+                    .onChanged { value in dragChanged(value.translation.height) }
                     .onEnded { value in
-                        let projected = settled - value.predictedEndTranslation.height
-                        let next = DrawerDetent.allCases.min { abs((heights[$0] ?? 0) - projected) < abs((heights[$1] ?? 0) - projected) } ?? .half
-                        withAnimation(.interpolatingSpring(mass: 1, stiffness: 260, damping: 30, initialVelocity: 0)) { drawer = next }
+                        dragEnded(translation: value.translation.height, predicted: value.predictedEndTranslation.height, velocity: value.velocity.height, heights: heights)
                     }
             )
             .onTapGesture {
-                if drawer == .peek { withAnimation(.interpolatingSpring(mass: 1, stiffness: 260, damping: 30)) { drawer = .half } }
+                if drawer == .peek { settle(to: .half, from: heights[.peek]!, velocity: 0, heights: heights) }
             }
 
             Group {
@@ -114,22 +123,74 @@ struct PlanScreen: View {
                     TripContent(onOpenDay: { selectedDayId = $0 }, onAsk: onAsk)
                 }
             }
-            // The part of the drawer below the screen edge; keeps the last rows reachable at half height.
+            // Room for the part of the drawer that's below the screen, so the last rows stay reachable.
             .safeAreaPadding(.bottom, max(0, full - settled))
             .opacity(height < heights[.peek]! + 40 ? 0 : 1)
             .animation(.easeOut(duration: 0.15), value: height < heights[.peek]! + 40)
         }
         .frame(height: full, alignment: .top)
         .frame(maxWidth: .infinity)
-        .background(
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+        .background(alignment: .top) {
+            // Not clipped: runs well past the bottom of the screen.
             UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24)
                 .fill(Color.white)
+                .frame(height: full + bottomInset + 600)
                 .shadow(color: .black.opacity(0.10), radius: 12, y: -4)
-                .ignoresSafeArea(edges: .bottom)
-        )
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+        }
         .offset(y: full - height)
+        .onChange(of: isDragging) { _, dragging in
+            // The system cancelled the gesture (no onEnded): settle wherever the drawer is closest to.
+            if !dragging && dragOffset != 0 { dragEnded(translation: dragOffset, predicted: dragOffset, velocity: 0, heights: heights) }
+        }
     }
+
+    private func dragChanged(_ translation: CGFloat) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { dragOffset = translation }
+    }
+
+    private func dragEnded(translation: CGFloat, predicted: CGFloat, velocity: CGFloat, heights: [DrawerDetent: CGFloat]) {
+        let settled = heights[drawer] ?? 0
+        let current = settled - translation
+        let projected = settled - predicted
+        let next = DrawerDetent.allCases.min { abs((heights[$0] ?? 0) - projected) < abs((heights[$1] ?? 0) - projected) } ?? .half
+        settle(to: next, from: current, velocity: -velocity, heights: heights)
+    }
+
+    /// One animation moves from where the drawer is now to the detent, carrying the finger's speed.
+    /// `velocity` is in points per second, positive = drawer growing.
+    private func settle(to next: DrawerDetent, from current: CGFloat, velocity: CGFloat, heights: [DrawerDetent: CGFloat]) {
+        let distance = (heights[next] ?? 0) - current
+        let relative = abs(distance) > 1 ? max(-12, min(12, velocity / distance)) : 0
+        withAnimation(.interpolatingSpring(mass: 1, stiffness: Self.settleSpring.stiffness, damping: Self.settleSpring.damping, initialVelocity: relative)) {
+            drawer = next
+            dragOffset = 0
+        }
+    }
+
+    #if DEBUG
+    /// `-NorthstarDrawerDemo YES`: drives the real drag/release functions frame by frame (UI tests can't render
+    /// mid-gesture), so a screen recording shows exactly what a finger would.
+    private func runDrawerDemoIfRequested(heights: [DrawerDetent: CGFloat]) async {
+        guard UserDefaults.standard.bool(forKey: "NorthstarDrawerDemo") else { return }
+        while store.bundle == nil { try? await Task.sleep(for: .milliseconds(200)) }
+        selectedDayId = store.days.dropFirst().first?.id
+        try? await Task.sleep(for: .seconds(3))
+        // (distance dragged, ms per frame): up partway, down partway, up past full, down to peek, back up.
+        for (distance, step) in [(-220.0, 16), (240.0, 16), (-520.0, 12), (700.0, 12), (-260.0, 16)] {
+            let frames = Int(abs(distance) / 6)
+            for i in 1...frames {
+                dragChanged(distance * Double(i) / Double(frames))
+                try? await Task.sleep(for: .milliseconds(step))
+            }
+            try? await Task.sleep(for: .milliseconds(250)) // finger held still
+            dragEnded(translation: distance, predicted: distance, velocity: 0, heights: heights)
+            try? await Task.sleep(for: .seconds(1.6))
+        }
+    }
+    #endif
 
     private var mapOverlay: some View {
         HStack {

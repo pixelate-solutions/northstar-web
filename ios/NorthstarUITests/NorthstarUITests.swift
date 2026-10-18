@@ -298,6 +298,47 @@ final class NorthstarUITests: XCTestCase {
         XCTAssertEqual(handle.frame.minY, start, accuracy: 40)
     }
 
+    /// The drawer's white surface must reach the bottom of the screen at full height (no map under the tab bar),
+    /// and the low position must sit above the tab bar.
+    func testDrawerCoversScreenAtEveryHeight() throws {
+        signInIfNeeded()
+        app.buttons["Day 2"].tap()
+        sleep(3)
+        let handle = element("drawer-handle")
+        XCTAssertTrue(handle.waitForExistence(timeout: 5))
+        func drag(to y: CGFloat) {
+            handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+                .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y)))
+            sleep(2)
+        }
+
+        drag(to: 0.05)
+        let shot = app.screenshot()
+        attach("drawer-full-bottom")
+        // Left edge beside the floating tab bar, just above the home indicator: must be the white drawer, not map.
+        let image = shot.image
+        for fy in [0.93, 0.97, 0.99] as [CGFloat] {
+            let color = pixel(image, x: image.size.width * 0.02, y: image.size.height * fy)
+            XCTAssertGreaterThan(min(color.r, color.g, color.b), 0.93, "Map shows under the tab bar at y=\(fy)")
+        }
+
+        drag(to: 0.95)
+        attach("drawer-low")
+        XCTAssertLessThan(handle.frame.maxY, app.tabBars.firstMatch.frame.minY + 4, "Low drawer should sit above the tab bar")
+
+        drag(to: 0.5)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'DAY 2'")).firstMatch.isHittable)
+    }
+
+    private func pixel(_ image: UIImage, x: CGFloat, y: CGFloat) -> (r: CGFloat, g: CGFloat, b: CGFloat) {
+        guard let cg = image.cgImage else { return (0, 0, 0) }
+        let scale = CGFloat(cg.width) / image.size.width
+        var data = [UInt8](repeating: 0, count: 4)
+        let context = CGContext(data: &data, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.draw(cg, in: CGRect(x: -x * scale, y: -(CGFloat(cg.height) - y * scale), width: CGFloat(cg.width), height: CGFloat(cg.height)))
+        return (CGFloat(data[0]) / 255, CGFloat(data[1]) / 255, CGFloat(data[2]) / 255)
+    }
+
     func testEditProfileName() throws {
         signInIfNeeded()
         func rename(to last: String) {
