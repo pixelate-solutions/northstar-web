@@ -594,6 +594,7 @@ struct HistoryDrawer: View {
                                 .padding(.horizontal, 16)
                                 .frame(height: 44)
                                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(conversation.id == currentId ? NS.surface : .clear))
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }

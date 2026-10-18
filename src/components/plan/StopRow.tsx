@@ -2,7 +2,6 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Check } from "lucide-react";
 
 import { CategoryPill } from "@/components/trip/category";
 import type { EventJson } from "@/lib/client-types";
@@ -52,17 +51,15 @@ export function StopRow({
         </span>
         <span
           className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-semibold sm:h-7 sm:w-7 sm:text-[12px] ${
-            selected || highlighted ? "bg-lane text-ink" : "bg-ink text-white"
+            selected || highlighted ? "bg-lane text-ink" : event.isBooked ? "bg-go text-white" : "bg-ink text-white"
           }`}
+          title={event.isBooked ? "Booked" : undefined}
         >
           {number}
         </span>
         <span className="min-w-0 flex-1 truncate text-[16px] font-semibold tracking-[-0.01em]">{event.title}</span>
         <CategoryPill category={event.category} className="hidden sm:inline-flex" />
-        <span className={`flex w-16 shrink-0 items-center justify-end gap-1 font-mono text-[12px] sm:text-[13px] ${event.isBooked ? "font-semibold text-go" : "font-medium text-ink"}`}>
-          {event.isBooked ? <Check size={13} strokeWidth={3} /> : null}
-          {cost}
-        </span>
+        {cost ? <span className="shrink-0 font-mono text-[12px] font-medium text-ink sm:text-[13px]">{cost}</span> : null}
       </button>
     </div>
   );
@@ -74,7 +71,7 @@ export function Leg({ label, drive }: { label: string | null; drive?: boolean })
     <div className="flex h-[22px] items-center gap-3 px-3 sm:gap-3.5">
       <span className={`shrink-0 ${timeColumnClass(use24Hour)}`} />
       <span className="flex w-6 shrink-0 justify-center sm:w-7">
-        <span className={`h-[22px] ${drive ? "w-[3px] bg-lane" : "w-[2px] bg-line"}`} />
+        <span className="h-[22px] w-[2px] bg-line" />
       </span>
       {label ? <span className={`font-mono text-[12px] ${drive ? "font-semibold text-ink" : "font-medium text-muted"}`}>{label}</span> : null}
     </div>

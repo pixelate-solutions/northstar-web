@@ -275,6 +275,29 @@ final class NorthstarUITests: XCTestCase {
         XCTAssertTrue(synced.waitForNonExistence(timeout: 10))
     }
 
+    func testDrawerDrag() throws {
+        signInIfNeeded()
+        app.buttons["Day 2"].tap()
+        sleep(3)
+        let handle = element("drawer-handle")
+        XCTAssertTrue(handle.waitForExistence(timeout: 5))
+        func drag(to y: CGFloat) {
+            handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+                .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y)), withVelocity: XCUIGestureVelocity(150), thenHoldForDuration: 0.3)
+            sleep(1)
+        }
+        let start = handle.frame.minY
+        drag(to: 0.08)
+        attach("drawer-up")
+        XCTAssertLessThan(handle.frame.minY, start - 200)
+        drag(to: 0.92)
+        attach("drawer-down")
+        XCTAssertGreaterThan(handle.frame.minY, app.frame.height * 0.75)
+        drag(to: 0.48)
+        attach("drawer-half")
+        XCTAssertEqual(handle.frame.minY, start, accuracy: 40)
+    }
+
     func testEditProfileName() throws {
         signInIfNeeded()
         func rename(to last: String) {

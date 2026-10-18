@@ -20,10 +20,15 @@ struct PlanScreen: View {
     var body: some View {
         GeometryReader { geo in
             let heights = DrawerDetent.heights(for: geo.size.height, topInset: geo.safeAreaInsets.top)
-            let base = heights[drawer] ?? 300
-            let height = min(max(base - dragOffset, heights[.peek]!), heights[.full]!)
+            let settled = heights[drawer] ?? 300
+            let full = heights[.full]!
+            // Rubber-band slightly past the ends instead of stopping dead.
+            let raw = settled - dragOffset
+            let height = raw > full ? full + (raw - full) * 0.25 : raw < heights[.peek]! ? heights[.peek]! - (heights[.peek]! - raw) * 0.25 : raw
 
             ZStack(alignment: .bottom) {
+                // The map never resizes while dragging; only its safe area moves once the drawer settles,
+                // so MapKit keeps the route visible above the drawer without re-laying out every frame.
                 PlanMap(
                     day: selectedDay,
                     days: store.days,
@@ -32,7 +37,7 @@ struct PlanScreen: View {
                     camera: $camera,
                     onSelectStop: { editingStop = $0 }
                 )
-                .padding(.bottom, max(0, height - 24))
+                .safeAreaPadding(.bottom, min(settled, heights[.half]!) - 24)
                 .ignoresSafeArea(edges: .top)
 
                 VStack(spacing: 0) {
@@ -40,7 +45,7 @@ struct PlanScreen: View {
                     Spacer()
                 }
 
-                drawerView(height: height, heights: heights, total: geo.size.height)
+                drawerView(height: height, settled: settled, heights: heights)
             }
         }
         .background(Color.white)
@@ -75,8 +80,10 @@ struct PlanScreen: View {
         }
     }
 
-    private func drawerView(height: CGFloat, heights: [DrawerDetent: CGFloat], total: CGFloat) -> some View {
-        VStack(spacing: 0) {
+    /// The drawer is laid out once at full height and slid with an offset, so dragging is a pure transform.
+    private func drawerView(height: CGFloat, settled: CGFloat, heights: [DrawerDetent: CGFloat]) -> some View {
+        let full = heights[.full]!
+        return VStack(spacing: 0) {
             // Drag handle region: grabber + day strip.
             VStack(spacing: 0) {
                 Capsule().fill(Color(white: 0.82)).frame(width: 36, height: 5).padding(.top, 8).padding(.bottom, 10)
@@ -87,16 +94,17 @@ struct PlanScreen: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("drawer-handle")
             .gesture(
-                DragGesture(minimumDistance: 4)
+                // Measured in global space: the handle moves with the drawer, so local coordinates would feed back.
+                DragGesture(minimumDistance: 2, coordinateSpace: .global)
                     .updating($dragOffset) { value, state, _ in state = value.translation.height }
                     .onEnded { value in
-                        let projected = (heights[drawer] ?? 300) - value.predictedEndTranslation.height
+                        let projected = settled - value.predictedEndTranslation.height
                         let next = DrawerDetent.allCases.min { abs((heights[$0] ?? 0) - projected) < abs((heights[$1] ?? 0) - projected) } ?? .half
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { drawer = next }
+                        withAnimation(.interpolatingSpring(mass: 1, stiffness: 260, damping: 30, initialVelocity: 0)) { drawer = next }
                     }
             )
             .onTapGesture {
-                if drawer == .peek { withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { drawer = .half } }
+                if drawer == .peek { withAnimation(.interpolatingSpring(mass: 1, stiffness: 260, damping: 30)) { drawer = .half } }
             }
 
             Group {
@@ -106,9 +114,12 @@ struct PlanScreen: View {
                     TripContent(onOpenDay: { selectedDayId = $0 }, onAsk: onAsk)
                 }
             }
-            .opacity(drawer == .peek && dragOffset == 0 ? 0 : 1)
+            // The part of the drawer below the screen edge; keeps the last rows reachable at half height.
+            .safeAreaPadding(.bottom, max(0, full - settled))
+            .opacity(height < heights[.peek]! + 40 ? 0 : 1)
+            .animation(.easeOut(duration: 0.15), value: height < heights[.peek]! + 40)
         }
-        .frame(height: height, alignment: .top)
+        .frame(height: full, alignment: .top)
         .frame(maxWidth: .infinity)
         .background(
             UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24)
@@ -117,6 +128,7 @@ struct PlanScreen: View {
                 .ignoresSafeArea(edges: .bottom)
         )
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+        .offset(y: full - height)
     }
 
     private var mapOverlay: some View {

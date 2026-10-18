@@ -140,22 +140,22 @@ struct StopRowView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(width: use24Hour ? 40 : 58, alignment: .leading)
+            // Booked stops get a green number instead of a trailing check mark.
             Text("\(number)")
                 .font(NS.mono(11, .semibold))
                 .foregroundStyle(highlighted ? NS.ink : .white)
                 .frame(width: 24, height: 24)
-                .background(Circle().fill(highlighted ? NS.lane : NS.ink))
+                .background(Circle().fill(highlighted ? NS.lane : stop.booked ? NS.go : NS.ink))
+                .accessibilityLabel(stop.booked ? "\(number), booked" : "\(number)")
             Text(stop.title).font(NS.sans(16, .semibold)).lineLimit(1).foregroundStyle(NS.ink)
             Spacer(minLength: 4)
+            if let cost = stop.costValue {
+                Text(Fmt.money(cost)).font(NS.mono(12, .semibold)).foregroundStyle(NS.ink).fixedSize()
+            }
             Image(systemName: CategoryInfo.info(stop.category).symbol)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(CategoryInfo.color(stop.category))
-            HStack(spacing: 3) {
-                if stop.booked { Image(systemName: "checkmark").font(.system(size: 11, weight: .heavy)) }
-                if let cost = stop.costValue { Text(Fmt.money(cost)).font(NS.mono(12, .semibold)) }
-            }
-            .foregroundStyle(stop.booked ? NS.go : NS.ink)
-            .frame(width: 56, alignment: .trailing)
+                .frame(width: 18)
         }
         .padding(.horizontal, 12)
         .frame(height: 50)
@@ -173,7 +173,8 @@ struct LegView: View {
         let drive = (leg?.duration ?? 0) > 30 * 60
         HStack(spacing: 12) {
             Spacer().frame(width: use24Hour ? 40 : 58)
-            Rectangle().fill(focused || drive ? NS.lane : NS.line).frame(width: focused || drive ? 3 : 2, height: 26).frame(width: 24)
+            // Yellow only for the leg focused on the map; long drives just get a bolder label.
+            Rectangle().fill(focused ? NS.lane : NS.line).frame(width: focused ? 3 : 2, height: 26).frame(width: 24)
             if let leg {
                 HStack(spacing: 6) {
                     Text(Fmt.duration(leg.duration) + (drive ? " drive" : ""))
