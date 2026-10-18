@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { expenses } from "@/db/schema";
 import { requireRouteTripContext } from "@/lib/route-auth";
-import { expenseSchema } from "@/lib/validation";
+import { expensePatchSchema, parseJsonBody } from "@/lib/validation";
 
 async function getOwnedExpense(expenseId: number) {
   const context = await requireRouteTripContext({ minimumRole: "collaborator" });
@@ -37,19 +37,21 @@ export async function PUT(
     return context.error;
   }
 
-  const payload = expenseSchema.partial().parse(await request.json());
+  const parsed = await parseJsonBody(request, expensePatchSchema);
+  if ("error" in parsed) return parsed.error;
+  const { amount, ...rest } = parsed.data;
+  if (!Object.keys(parsed.data).length) return NextResponse.json(context.expense);
+
   const [updated] = await context.db
     .update(expenses)
-    .set({
-      ...payload,
-      amount: payload.amount === undefined ? undefined : String(payload.amount),
-      purchaseDate: payload.purchaseDate || null,
-    })
+    .set({ ...rest, ...(amount !== undefined ? { amount: String(amount) } : {}) })
     .where(eq(expenses.id, context.expense.id))
     .returning();
 
   return NextResponse.json(updated);
 }
+
+export const PATCH = PUT;
 
 export async function DELETE(
   _request: Request,

@@ -69,7 +69,6 @@ export interface AiUploadedFile {
   bytes: number;
 }
 
-export type AiModelMode = "auto" | "gpt-5.4" | "gpt-5.4-mini";
 
 export interface AiChatResponse {
   conversation: AiConversationSummary;

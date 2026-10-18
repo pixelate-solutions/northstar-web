@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 import { days, events } from "@/db/schema";
 import { requireRouteTripContext } from "@/lib/route-auth";
-import { eventSchema } from "@/lib/validation";
+import { eventSchema, parseJsonBody } from "@/lib/validation";
 
 function revalidateAppPaths() {
   revalidatePath("/app", "layout");
@@ -52,7 +52,9 @@ export async function POST(request: Request) {
     return context.error;
   }
 
-  const payload = eventSchema.parse(await request.json());
+  const parsed = await parseJsonBody(request, eventSchema);
+  if ("error" in parsed) return parsed.error;
+  const payload = parsed.data;
   const ownedDay = await context.db.query.days.findFirst({
     where: (table, { and, eq }) =>
       and(eq(table.id, payload.dayId), eq(table.tripId, context.activeTrip.id)),

@@ -12,7 +12,6 @@ const TRIP_ROLE_LEVELS: Record<TripAccessRole, number> = {
 };
 
 export async function requireRouteTripContext(options?: {
-  requirePaid?: boolean;
   minimumRole?: TripAccessRole;
 }) {
   const db = getDb();
@@ -38,12 +37,6 @@ export async function requireRouteTripContext(options?: {
   if (!context) {
     return {
       error: NextResponse.json({ error: "Authentication required." }, { status: 401 }),
-    };
-  }
-
-  if (options?.requirePaid !== false && !context.appUser.hasLifetimeAccess) {
-    return {
-      error: NextResponse.json({ error: "Payment required." }, { status: 402 }),
     };
   }
 

@@ -89,9 +89,8 @@ export default function TermsPage() {
           <section style={sectionStyle}>
             <h2 style={{ fontSize: 20, color: "#0f172a", marginBottom: 10 }}>Accounts and access</h2>
             <p style={{ fontSize: 15, color: "#475569", lineHeight: 1.75 }}>
-              Some features require an account, payment, or connected third-party service. Access to
-              paid features may be suspended or revoked if payments are reversed, fraudulent activity
-              is detected, or the service is abused.
+              Northstar is free to use and requires an account. Access may be suspended or revoked if
+              fraudulent activity is detected or the service is abused.
             </p>
           </section>
 
@@ -112,8 +111,8 @@ export default function TermsPage() {
               External providers
             </h2>
             <p style={{ fontSize: 15, color: "#475569", lineHeight: 1.75 }}>
-              Northstar may link to or integrate with third-party providers such as Google, booking
-              partners, airlines, hotels, tours, and payment processors. Those services operate
+              Northstar may link to or integrate with third-party providers such as maps, airlines,
+              hotels, and tours. Those services operate
               under their own terms and policies, and Northstar is not responsible for their conduct
               or performance.
             </p>

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { expenses } from "@/db/schema";
 import { requireRouteTripContext } from "@/lib/route-auth";
-import { expenseSchema } from "@/lib/validation";
+import { expenseSchema, parseJsonBody } from "@/lib/validation";
 
 export async function GET() {
   const context = await requireRouteTripContext();
@@ -26,7 +26,9 @@ export async function POST(request: Request) {
     return context.error;
   }
 
-  const payload = expenseSchema.parse(await request.json());
+  const parsed = await parseJsonBody(request, expenseSchema);
+  if ("error" in parsed) return parsed.error;
+  const payload = parsed.data;
   const [created] = await context.db
     .insert(expenses)
     .values({

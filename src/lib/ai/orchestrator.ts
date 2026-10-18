@@ -18,35 +18,29 @@ import {
 } from "@/db/schema";
 import {
   createAiActionLog,
-  createAiApproval,
   createAiConversation,
   createAiMessage,
-  createBookingOrder,
   getAiConversation,
   getAiMessage,
-  getConnectedAccount,
   listAiMessages,
   listAiActionLogsForMessage,
   requireDb,
   updateAiMessageMetadata,
-  upsertTravelerProfile,
 } from "@/lib/ai/db";
 import { buildAiTripContext, formatAiTripContext } from "@/lib/ai/context";
 import { estimateRoute, geocodePlace } from "@/lib/ai/geo";
-import { syncGoogleReservations } from "@/lib/ai/integrations/google";
 import {
   buildFunctionCallOutput,
   createOpenAiResponse,
   getFunctionCalls,
+  getResponseSources,
   getResponseText,
   isOpenAiConfigured,
 } from "@/lib/ai/openai";
 import { CATEGORIES } from "@/lib/category-config";
-import { summarizeProviderAvailability } from "@/lib/ai/providers";
 import { updateTripDates } from "@/lib/trips";
 import type {
   AiCard,
-  AiModelMode,
   AiTripContext,
   AiUploadedFile,
   ToolExecutionArtifact,
@@ -54,12 +48,12 @@ import type {
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
 
-const SMALL_MODEL = "gpt-5.4-mini";
-const LARGE_MODEL = "gpt-5.4";
-const MAX_TOOL_ROUNDS = 8;
-const LARGE_CONTEXT_MESSAGE_CHARS = 1200;
-const LARGE_CONTEXT_HISTORY_CHARS = 8000;
-const LARGE_CONTEXT_TRIP_CHARS = 50000;
+// gpt-6-luna has a 1.05M-token context window, so the full trip and full chat history are sent every turn.
+export const AI_MODEL = "gpt-6-luna";
+const AI_REASONING_EFFORT = "medium";
+const MAX_TOOL_ROUNDS = 24;
+// ~4 chars per token; keep the transcript well inside the 1M window alongside the trip context.
+const MAX_HISTORY_CHARS = 2_400_000;
 const EVENT_CATEGORY_VALUES = [
   "hike",
   "food",
@@ -167,9 +161,6 @@ const tripDayInputSchema = z.object({
 });
 
 const toolValidators = {
-  get_trip_snapshot: z.object({
-    focus: z.string(),
-  }),
   set_trip_structure: z.object({
     name: nullableStringSchema(),
     destination: nullableStringSchema(),
@@ -264,72 +255,25 @@ const toolValidators = {
     priority: z.enum(["high", "medium", "low"]),
     dayDate: nullableStringSchema(),
   }),
-  create_location: z.object({
-    date: z.string(),
-    name: z.string(),
-    latitude: z.number(),
-    longitude: z.number(),
-    type: z.string(),
-    description: nullableStringSchema(),
-    imageUrl: nullableStringSchema(),
-    tip: nullableStringSchema(),
-    googleMapsUrl: nullableStringSchema(),
-  }),
-  update_location: z.object({
-    locationId: z.number(),
-    name: nullableStringSchema(),
-    type: nullableStringSchema(),
-    description: nullableStringSchema(),
-    imageUrl: nullableStringSchema(),
-    tip: nullableStringSchema(),
-    googleMapsUrl: nullableStringSchema(),
-  }),
-  delete_location: z.object({
-    locationId: z.number(),
-    reason: z.string(),
+  update_list_items: z.object({
+    items: z.array(
+      z.object({
+        kind: z.enum(["packing", "todo", "expense"]),
+        id: z.number().int(),
+        action: z.enum(["update", "delete"]),
+        done: nullableBooleanSchema(),
+        title: nullableStringSchema(),
+        amount: nullableNumberSchema(),
+      })
+    ),
   }),
   estimate_route: z.object({
     origin: z.string(),
     destination: z.string(),
   }),
-  store_traveler_profile: z.object({
-    fullName: z.string(),
-    email: nullableStringSchema(),
-    phone: nullableStringSchema(),
-    birthDate: nullableStringSchema(),
-    preferences: nullableStringSchema(),
-    loyaltyPrograms: nullableStringSchema(),
-    isDefault: z.boolean(),
-  }),
-  create_external_approval: z.object({
-    approvalType: z.string(),
-    title: z.string(),
-    description: z.string(),
-    provider: nullableStringSchema(),
-    externalUrl: nullableStringSchema(),
-    payloadJson: nullableStringSchema(),
-  }),
-  sync_google_reservations: z.object({
-    reason: z.string(),
-  }),
 } satisfies Record<string, z.ZodTypeAny>;
 
 const toolDefinitions = [
-  {
-    type: "function",
-    name: "get_trip_snapshot",
-    description:
-      "Read the current active trip context with days, events, budget, packing, and reservations. Use this before editing existing trip content whenever the request depends on what is currently on the site.",
-    strict: true,
-    parameters: {
-      type: "object",
-      properties: {
-        focus: { type: "string", description: "What aspect of the trip the assistant needs to inspect." },
-      },
-      required: ["focus"],
-      additionalProperties: false,
-    },
-  },
   {
     type: "function",
     name: "set_trip_structure",
@@ -712,69 +656,31 @@ const toolDefinitions = [
   },
   {
     type: "function",
-    name: "create_location",
+    name: "update_list_items",
     description:
-      "Add a standalone saved map location to a day in the active trip, but only when the user explicitly asks for a separate map pin outside the itinerary events.",
+      "Check off, rename, re-price, or delete existing packing items, to-dos (reminders), and expenses by id. done means packed / completed / paid depending on kind. Pass null for fields you are not changing.",
     strict: true,
     parameters: {
       type: "object",
       properties: {
-        date: { type: "string" },
-        name: { type: "string" },
-        latitude: { type: "number" },
-        longitude: { type: "number" },
-        type: { type: "string" },
-        description: { type: ["string", "null"] },
-        imageUrl: { type: ["string", "null"] },
-        tip: { type: ["string", "null"] },
-        googleMapsUrl: { type: ["string", "null"] },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["packing", "todo", "expense"] },
+              id: { type: "integer" },
+              action: { type: "string", enum: ["update", "delete"] },
+              done: { type: ["boolean", "null"] },
+              title: { type: ["string", "null"] },
+              amount: { type: ["number", "null"] },
+            },
+            required: ["kind", "id", "action", "done", "title", "amount"],
+            additionalProperties: false,
+          },
+        },
       },
-      required: [
-        "date",
-        "name",
-        "latitude",
-        "longitude",
-        "type",
-        "description",
-        "imageUrl",
-        "tip",
-        "googleMapsUrl",
-      ],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: "function",
-    name: "update_location",
-    description: "Update a mapped location on the active trip using a known location ID.",
-    strict: true,
-    parameters: {
-      type: "object",
-      properties: {
-        locationId: { type: "number" },
-        name: { type: ["string", "null"] },
-        type: { type: ["string", "null"] },
-        description: { type: ["string", "null"] },
-        imageUrl: { type: ["string", "null"] },
-        tip: { type: ["string", "null"] },
-        googleMapsUrl: { type: ["string", "null"] },
-      },
-      required: ["locationId", "name", "type", "description", "imageUrl", "tip", "googleMapsUrl"],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: "function",
-    name: "delete_location",
-    description: "Delete a mapped location from the active trip.",
-    strict: true,
-    parameters: {
-      type: "object",
-      properties: {
-        locationId: { type: "number" },
-        reason: { type: "string" },
-      },
-      required: ["locationId", "reason"],
+      required: ["items"],
       additionalProperties: false,
     },
   },
@@ -793,67 +699,6 @@ const toolDefinitions = [
       additionalProperties: false,
     },
   },
-  {
-    type: "function",
-    name: "store_traveler_profile",
-    description: "Save traveler profile details and preferences for future planning or booking flows.",
-    strict: true,
-    parameters: {
-      type: "object",
-      properties: {
-        fullName: { type: "string" },
-        email: { type: ["string", "null"] },
-        phone: { type: ["string", "null"] },
-        birthDate: { type: ["string", "null"] },
-        preferences: { type: ["string", "null"] },
-        loyaltyPrograms: { type: ["string", "null"] },
-        isDefault: { type: "boolean" },
-      },
-      required: [
-        "fullName",
-        "email",
-        "phone",
-        "birthDate",
-        "preferences",
-        "loyaltyPrograms",
-        "isDefault",
-      ],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: "function",
-    name: "create_external_approval",
-    description: "Create an approval card for any external booking, provider handoff, Google connection, or off-platform action.",
-    strict: true,
-    parameters: {
-      type: "object",
-      properties: {
-        approvalType: { type: "string" },
-        title: { type: "string" },
-        description: { type: "string" },
-        provider: { type: ["string", "null"] },
-        externalUrl: { type: ["string", "null"] },
-        payloadJson: { type: ["string", "null"] },
-      },
-      required: ["approvalType", "title", "description", "provider", "externalUrl", "payloadJson"],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: "function",
-    name: "sync_google_reservations",
-    description: "Import or refresh travel reservations from the user's connected Google Gmail and Google Calendar accounts.",
-    strict: true,
-    parameters: {
-      type: "object",
-      properties: {
-        reason: { type: "string" },
-      },
-      required: ["reason"],
-      additionalProperties: false,
-    },
-  },
 ] as const;
 
 function truncate(value: string, max = 60) {
@@ -866,117 +711,29 @@ function cleanNullable(value: string | null) {
   return trimmed || null;
 }
 
-function stringifyMaybeJson(value: string | null) {
-  if (!value) return null;
-  try {
-    return JSON.parse(value) as Record<string, unknown>;
-  } catch {
-    return { value };
-  }
-}
 
 function formatHistoryTranscript(history: Awaited<ReturnType<typeof listAiMessages>>) {
-  return history
-    .slice(-12)
-    .map((message) => {
+  const lines = history.map((message) => {
       const attachments = getMessageAttachments(message.metadata);
       const attachmentLabel = attachments.length
         ? `\nAttached files: ${attachments.map((file) => file.filename).join(", ")}`
         : "";
       return `${message.role === "assistant" ? "Assistant" : "User"}: ${message.content}${attachmentLabel}`;
-    })
-    .join("\n");
+  });
+
+  const kept: string[] = [];
+  let total = 0;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    total += lines[index].length + 1;
+    if (total > MAX_HISTORY_CHARS) break;
+    kept.unshift(lines[index]);
+  }
+  return kept.join("\n");
 }
 
-function getHistoryTranscriptLength(history: Awaited<ReturnType<typeof listAiMessages>>) {
-  return formatHistoryTranscript(history).length;
-}
 
-function getTripContextLength(tripContext: AiTripContext) {
-  return formatAiTripContext(tripContext).length;
-}
 
-function hasPlanningIntent(message: string) {
-  return /\b(plan|planning|itinerary|schedule|route|optimi[sz]e|day-by-day|multi-day|full\s+day|fill\s+out|autofill|auto-fill|recommend|recommendations|things\s+to\s+do|where\s+to\s+eat|restaurants?|cafes?|cafés?|budget|cost\s+breakdown|packing\s+list|analy[sz]e|compare|strategy|organize|build\s+(?:a|the)\s+(?:day|trip|plan)|uploaded\s+file|attachment)\b/i.test(
-    message
-  );
-}
 
-function chooseAiModel(input: {
-  currentMessage: string;
-  history: Awaited<ReturnType<typeof listAiMessages>>;
-  tripContext: AiTripContext;
-  files: AiUploadedFile[];
-  modelMode: AiModelMode;
-}) {
-  const messageLength = input.currentMessage.length;
-  const historyLength = getHistoryTranscriptLength(input.history);
-  const tripContextLength = getTripContextLength(input.tripContext);
-  const uploadedBytes = input.files.reduce((sum, file) => sum + file.bytes, 0);
-  const reasons: string[] = [];
-
-  if (input.modelMode !== "auto") {
-    return {
-      model: input.modelMode,
-      mode: input.modelMode,
-      reasons: ["manual selection"],
-      metrics: {
-        messageLength,
-        historyLength,
-        tripContextLength,
-        fileCount: input.files.length,
-        uploadedBytes,
-      },
-    };
-  }
-
-  if (input.files.length) {
-    reasons.push("file input");
-  }
-  if (uploadedBytes > 0) {
-    reasons.push("uploaded file context");
-  }
-  if (messageLength >= LARGE_CONTEXT_MESSAGE_CHARS) {
-    reasons.push("large user prompt");
-  }
-  if (historyLength >= LARGE_CONTEXT_HISTORY_CHARS) {
-    reasons.push("large conversation history");
-  }
-  if (tripContextLength >= LARGE_CONTEXT_TRIP_CHARS) {
-    reasons.push("large trip context");
-  }
-  if (hasPlanningIntent(input.currentMessage)) {
-    reasons.push("planning or analysis intent");
-  }
-
-  if (reasons.length) {
-    return {
-      model: LARGE_MODEL,
-      mode: input.modelMode,
-      reasons,
-      metrics: {
-        messageLength,
-        historyLength,
-        tripContextLength,
-        fileCount: input.files.length,
-        uploadedBytes,
-      },
-    };
-  }
-
-  return {
-    model: SMALL_MODEL,
-    mode: input.modelMode,
-    reasons: ["simple prompt"],
-    metrics: {
-      messageLength,
-      historyLength,
-      tripContextLength,
-      fileCount: input.files.length,
-      uploadedBytes,
-    },
-  };
-}
 
 function getMessageAttachments(metadata: Record<string, unknown> | null | undefined) {
   const rawAttachments = metadata?.attachments;
@@ -1024,46 +781,24 @@ function collectConversationFiles(history: Awaited<ReturnType<typeof listAiMessa
   return files.reverse();
 }
 
-function buildSystemPrompt(input: {
-  tripContext: AiTripContext;
-  googleConnected: boolean;
-}) {
+function buildSystemPrompt(input: { tripContext: AiTripContext }) {
+  const today = new Date().toISOString().slice(0, 10);
   return [
-    "You are Northstar AI Trip Concierge inside a trip-planning application.",
-    "You are operating only on the current active trip. Never make assumptions about other trips or other users.",
-    "If the user asks for information only, answer directly. If the user asks for a trip change and the request is clear, perform the internal edits autonomously with the available tools and then summarize exactly what changed.",
-    "The live trip data in this prompt is the source of truth for what the site currently shows. Prefer it over prior chat memory.",
-    "For requests to change, rename, adjust, rewrite, reflect, or sync existing trip content, inspect the current trip state first and ground your edits in what is currently on the site.",
-    "If a request depends on the current wording, current schedule, current events, or current day structure, review the relevant day in the trip context JSON and call get_trip_snapshot when helpful before making mutations.",
-    "Unless the user explicitly asks for ideas only, requests for a packing list, budget, or itinerary mean they want those items implemented into the site, not just described in chat.",
-    "When the user describes a new trip or uploads an itinerary for a blank/default starter trip, do not stop with advice or ask whether to overwrite. Use set_trip_structure to replace the current default trip dates/days, then use set_day_itinerary to populate events. The undo button is the safety mechanism.",
-    "If the user gives a trip-length range, choose a practical length that fits the stated priorities instead of asking them to choose. For a 10-14 day Europe trip with Paris, Rome, and Amalfi Coast, default to about 13 days / 12 nights unless the uploaded itinerary specifies otherwise.",
-    "If the current trip year/duration conflicts with the user's stated trip, correct it with set_trip_structure before building itinerary events.",
-    "If the user asks to apply, implement, or add a full itinerary, you must write actual timed event records to the relevant days. Updating day titles, notes, or locations alone is not sufficient.",
-    "When a user provides or approves a day-by-day plan with times or clear morning/afternoon/evening structure, prefer set_day_itinerary to populate each day with events.",
-    "If the user asks for a full packing list, use set_packing_list to save the full list to the trip whenever possible. Do not save only a few sample items and leave the rest as prose.",
-    `Use only these packing categories when adding items: ${PACKING_CATEGORY_VALUES.join(", ")}. Pick the best fit for each item instead of putting everything into one category.`,
-    "If the user asks for a full budget or cost breakdown to be added, use set_budget_items to save the full set of budget items whenever possible.",
-    "When creating itinerary events, save rich event details by default: proper category, specific place name, useful description, helpful tip/notes, and coordinates for the map.",
-    "If an event has a location, it must also end up with non-null latitude and longitude. Do not leave location-bearing events without coordinates.",
-    "For drive events, do not save the route path as the event location. Save the destination place instead.",
-    "If you do not already know a location-bearing event's exact place or coordinates, use web search before calling create_event, set_day_itinerary, or update_event.",
-    "Use web search to find the exact venue, trailhead, address, or official listing, then pass the best available latitude and longitude in the tool call.",
-    "If the user asks you to find things to do, meals, cafés, bakeries, tours, or to fill out a day, use web search and implement specific named places on the first pass. Do not leave generic placeholders like 'Lunch nearby', 'Paris bakery', 'central Paris', or 'afternoon café stop' if you can reasonably identify a real option.",
-    "Do not reply saying you can make it more specific later when the user already asked for implementation. Research and apply the specifics now.",
-    `Use only these event categories when creating or editing events: ${EVENT_CATEGORY_VALUES.join(", ")}. Never invent new category names.`,
-    "Do not create standalone location records when implementing an itinerary. The trip map should come from day events with coordinates. Only use create_location if the user explicitly asks for a separate saved map pin.",
-    "Do not ask the user for coordinates or over-clarify routine itinerary details. Make reasonable assumptions, use web search to identify specific places, geocode likely places automatically, and if a generic location cannot be geocoded, switch to a specific named place or address before saving the event.",
-    "Ask a clarifying question only when a required detail is missing and the task cannot be completed safely without it.",
-    "For recommendations, destination research, prices, restaurants, excursions, and current facts like flight information, use web search whenever freshness matters.",
-    "Before changing plans that involve moving between places, use estimate_route so travel time and timezone changes are reflected in the schedule.",
-    "For budget help, use the current trip duration, destinations, reservations, and known expenses. For packing help, consider the destinations, weather implications, activity types, and trip length.",
-    "When you do implement a packing list, budget, or itinerary, keep the chat summary concise and focused on what you added or updated in the site rather than repeating the entire plan in prose.",
-    "Any external action must go through create_external_approval. This includes provider checkout, booking confirmation, off-platform reservation handoff, and account connections.",
-    "Current provider status:",
-    JSON.stringify(summarizeProviderAvailability()),
-    `Google reservation sync connected: ${input.googleConnected ? "yes" : "no"}`,
-    "Current trip context JSON:",
+    "You are Northstar, the planning assistant inside a trip planner. You work only on the current trip.",
+    `Today is ${today}.`,
+    "The trip JSON below is exactly what the user sees right now. Treat it as the source of truth over earlier chat messages.",
+    "If the user asks a question, answer it directly and briefly. If the user asks for a change, make it with the tools, then reply in one or two short sentences saying what changed. Do not restate the whole plan.",
+    "Every change you make is shown to the user as a list of changes with an Undo button, so act on clear requests without asking for confirmation.",
+    "Ask a clarifying question only when a required detail is genuinely missing and no reasonable assumption exists.",
+    "Stops are the events on each day. Each stop needs a specific real place name, a sensible time, the right category, and coordinates. Put helpful details (confirmation numbers, what to bring, tips) in the stop's tip field — that is the stop's notes.",
+    `Use only these stop categories: ${EVENT_CATEGORY_VALUES.join(", ")}.`,
+    "When you don't know a place's exact name, address, or coordinates, use web search first, then save the stop with latitude and longitude. Never save placeholders like 'Lunch nearby' when a real place can be found.",
+    "For drive stops, save the destination as the location, not the route.",
+    "When reshuffling a day, keep times realistic: use estimate_route for travel between places, leave time for meals, and respect fixed bookings (isBooked stops) and sunrise/sunset when relevant.",
+    "To plan or rebuild a whole day, use set_day_itinerary. To change the trip's dates or number of days, use set_trip_structure first.",
+    `Packing categories: ${PACKING_CATEGORY_VALUES.join(", ")}. Save full packing lists with set_packing_list and full budgets with set_budget_items rather than describing them in chat.`,
+    "Use web search whenever freshness matters: hours, closures, permits, conditions, prices, events.",
+    "Current trip JSON:",
     formatAiTripContext(input.tripContext),
   ].join("\n\n");
 }
@@ -1181,33 +916,7 @@ function buildMutationCard(title: string, changes: string[], description?: strin
   };
 }
 
-function buildReservationCards(result: Awaited<ReturnType<typeof syncGoogleReservations>>) {
-  return result.reservations.slice(0, 6).map<AiCard>((reservation) => ({
-    type: "reservation",
-    title: reservation.title,
-    category: reservation.category,
-    subtitle: reservation.providerName ?? reservation.location ?? null,
-    status: reservation.status,
-    dateLabel: reservation.startAt ? reservation.startAt.toISOString() : null,
-    confirmationCode: reservation.confirmationCode ?? null,
-  }));
-}
 
-function buildFollowups(text: string, cards: AiCard[], toolSummaries: string[]) {
-  if (cards.some((card) => card.type === "approval")) {
-    return ["Show me alternatives", "Keep planning the trip", "Skip that for now"];
-  }
-
-  if (cards.some((card) => card.type === "mutation")) {
-    return ["Adjust the plan", "Help with the budget", "Build the packing list"];
-  }
-
-  if (/budget/i.test(text) || toolSummaries.some((item) => /expense|budget/i.test(item))) {
-    return ["Add that budget to the trip", "Break it down by day", "Find cheaper options"];
-  }
-
-  return ["Plan a day for me", "Find restaurants nearby", "Help with reservations"];
-}
 
 async function getDayByDate(db: Db, tripId: number, date: string) {
   const day = await db.query.days.findFirst({
@@ -2147,6 +1856,58 @@ async function undoAiAssistantMessage(input: {
         break;
       }
 
+      case "update_list_items": {
+        const changes = Array.isArray(details?.changes) ? details.changes : [];
+        for (const raw of [...changes].reverse()) {
+          const change = asRecord(raw);
+          const previous = asRecord(change?.previous);
+          if (!change || !previous) continue;
+          const id = Number(change.id);
+          if (change.kind === "packing") {
+            const values = {
+              tripId: Number(previous.tripId),
+              category: String(previous.category),
+              name: String(previous.name),
+              quantity: typeof previous.quantity === "number" ? previous.quantity : 1,
+              isPacked: Boolean(previous.isPacked),
+              isEssential: Boolean(previous.isEssential),
+              daySpecific: typeof previous.daySpecific === "number" ? previous.daySpecific : null,
+              notes: typeof previous.notes === "string" ? previous.notes : null,
+            };
+            if (change.action === "delete") await input.db.insert(packingItems).values({ id, ...values });
+            else await input.db.update(packingItems).set(values).where(eq(packingItems.id, id));
+          } else if (change.kind === "todo") {
+            const values = {
+              tripId: Number(previous.tripId),
+              title: String(previous.title),
+              body: typeof previous.body === "string" ? previous.body : null,
+              dueDate: typeof previous.dueDate === "string" ? previous.dueDate : null,
+              isDone: Boolean(previous.isDone),
+              priority: typeof previous.priority === "string" ? previous.priority : "medium",
+              dayId: typeof previous.dayId === "number" ? previous.dayId : null,
+            };
+            if (change.action === "delete") await input.db.insert(reminders).values({ id, ...values });
+            else await input.db.update(reminders).set(values).where(eq(reminders.id, id));
+          } else if (change.kind === "expense") {
+            const values = {
+              tripId: Number(previous.tripId),
+              category: String(previous.category),
+              description: String(previous.description),
+              amount: String(previous.amount),
+              isBooked: Boolean(previous.isBooked),
+              isPaid: Boolean(previous.isPaid),
+              purchaseDate: typeof previous.purchaseDate === "string" ? previous.purchaseDate : null,
+              receiptUrl: typeof previous.receiptUrl === "string" ? previous.receiptUrl : null,
+              notes: typeof previous.notes === "string" ? previous.notes : null,
+            };
+            if (change.action === "delete") await input.db.insert(expenses).values({ id, ...values });
+            else await input.db.update(expenses).set(values).where(eq(expenses.id, id));
+          }
+        }
+        if (changes.length) revertedCount += 1;
+        break;
+      }
+
       case "create_location": {
         const locationId =
           typeof details?.createdLocationId === "number" ? details.createdLocationId : null;
@@ -2274,14 +2035,6 @@ async function executeToolCall(input: {
   const rawArguments = JSON.parse(input.rawArguments || "{}");
 
   switch (input.toolName) {
-    case "get_trip_snapshot": {
-      const parsedArgs = toolValidators.get_trip_snapshot.parse(rawArguments);
-      return {
-        output: input.tripContext,
-        summary: `Loaded the current trip snapshot for ${parsedArgs.focus}.`,
-      };
-    }
-
     case "update_trip_details": {
       const parsedArgs = toolValidators.update_trip_details.parse(rawArguments);
       const updates: Record<string, unknown> = {
@@ -3294,159 +3047,95 @@ async function executeToolCall(input: {
       };
     }
 
-    case "create_location": {
-      const parsedArgs = toolValidators.create_location.parse(rawArguments);
-      const day = await getDayByDate(input.db, input.activeTrip.id, parsedArgs.date);
-      const [created] = await input.db
-        .insert(locations)
-        .values({
-          dayId: day.id,
-          name: parsedArgs.name,
-          lat: String(parsedArgs.latitude),
-          lng: String(parsedArgs.longitude),
-          type: parsedArgs.type,
-          description: cleanNullable(parsedArgs.description) ?? null,
-          imageUrl: cleanNullable(parsedArgs.imageUrl) ?? null,
-          tip: cleanNullable(parsedArgs.tip) ?? null,
-          googleMapsUrl: cleanNullable(parsedArgs.googleMapsUrl) ?? null,
-        })
-        .returning();
+    case "update_list_items": {
+      const parsedArgs = toolValidators.update_list_items.parse(rawArguments);
+      const tripId = input.activeTrip.id;
+      const changes: Array<{ kind: string; id: number; action: string; previous: Record<string, unknown> }> = [];
+      const lines: string[] = [];
 
-      await touchTrip(input.db, input.activeTrip.id);
+      for (const item of parsedArgs.items) {
+        if (item.kind === "packing") {
+          const existing = await input.db.query.packingItems.findFirst({
+            where: and(eq(packingItems.id, item.id), eq(packingItems.tripId, tripId)),
+          });
+          if (!existing) continue;
+          if (item.action === "delete") {
+            await input.db.delete(packingItems).where(eq(packingItems.id, existing.id));
+            lines.push(`Removed "${existing.name}" from packing.`);
+          } else {
+            await input.db
+              .update(packingItems)
+              .set({
+                ...(item.done !== null ? { isPacked: item.done } : {}),
+                ...(item.title ? { name: item.title } : {}),
+              })
+              .where(eq(packingItems.id, existing.id));
+            lines.push(`Updated "${item.title ?? existing.name}"${item.done !== null ? (item.done ? " (packed)" : " (unpacked)") : ""}.`);
+          }
+          changes.push({ kind: "packing", id: existing.id, action: item.action, previous: { ...existing } });
+        } else if (item.kind === "todo") {
+          const existing = await input.db.query.reminders.findFirst({
+            where: and(eq(reminders.id, item.id), eq(reminders.tripId, tripId)),
+          });
+          if (!existing) continue;
+          if (item.action === "delete") {
+            await input.db.delete(reminders).where(eq(reminders.id, existing.id));
+            lines.push(`Removed to-do "${existing.title}".`);
+          } else {
+            await input.db
+              .update(reminders)
+              .set({
+                ...(item.done !== null ? { isDone: item.done } : {}),
+                ...(item.title ? { title: item.title } : {}),
+              })
+              .where(eq(reminders.id, existing.id));
+            lines.push(`Updated to-do "${item.title ?? existing.title}"${item.done ? " (done)" : ""}.`);
+          }
+          changes.push({ kind: "todo", id: existing.id, action: item.action, previous: { ...existing } });
+        } else {
+          const existing = await input.db.query.expenses.findFirst({
+            where: and(eq(expenses.id, item.id), eq(expenses.tripId, tripId)),
+          });
+          if (!existing) continue;
+          if (item.action === "delete") {
+            await input.db.delete(expenses).where(eq(expenses.id, existing.id));
+            lines.push(`Removed expense "${existing.description}".`);
+          } else {
+            await input.db
+              .update(expenses)
+              .set({
+                ...(item.done !== null ? { isPaid: item.done } : {}),
+                ...(item.title ? { description: item.title } : {}),
+                ...(item.amount !== null ? { amount: String(item.amount) } : {}),
+              })
+              .where(eq(expenses.id, existing.id));
+            lines.push(`Updated expense "${item.title ?? existing.description}".`);
+          }
+          changes.push({ kind: "expense", id: existing.id, action: item.action, previous: { ...existing } });
+        }
+      }
+
+      if (!changes.length) {
+        return { output: { updated: 0, error: "No matching items were found on this trip." } };
+      }
+
+      await touchTrip(input.db, tripId);
       revalidateTripViews();
-
-      const summary = `Added location "${parsedArgs.name}" to ${parsedArgs.date}.`;
+      const summary = lines.join(" ");
       await createAiActionLog(input.db, {
         userId: input.appUser.id,
-        tripId: input.activeTrip.id,
+        tripId,
         conversationId: input.conversationId,
         messageId: input.userMessageId,
-        actionType: "create_location",
+        actionType: "update_list_items",
         summary,
-        details: {
-          createdLocationId: created.id,
-          location: snapshotLocation(created),
-        },
+        details: { changes },
       });
 
       return {
-        output: created,
+        output: { updated: changes.length },
         summary,
-        cards: [buildMutationCard("Added map location", [summary])],
-        undoable: true,
-      };
-    }
-
-    case "update_location": {
-      const parsedArgs = toolValidators.update_location.parse(rawArguments);
-      const location = await input.db.query.locations.findFirst({
-        where: eq(locations.id, parsedArgs.locationId),
-        with: { day: true },
-      });
-      if (!location || location.day.tripId !== input.activeTrip.id) {
-        throw new Error("Location not found on the active trip.");
-      }
-
-      const updates: Record<string, unknown> = {};
-      const changes: string[] = [];
-      const name = cleanNullable(parsedArgs.name);
-      const type = cleanNullable(parsedArgs.type);
-      const description = cleanNullable(parsedArgs.description);
-      const imageUrl = cleanNullable(parsedArgs.imageUrl);
-      const tip = cleanNullable(parsedArgs.tip);
-      const googleMapsUrl = cleanNullable(parsedArgs.googleMapsUrl);
-
-      if (name !== undefined) {
-        updates.name = name || location.name;
-        changes.push(`Renamed location to "${updates.name}".`);
-      }
-      if (type !== undefined) {
-        updates.type = type || location.type;
-        changes.push(`Set location type to ${updates.type}.`);
-      }
-      if (description !== undefined) {
-        updates.description = description;
-        changes.push(description ? "Updated location description." : "Cleared location description.");
-      }
-      if (imageUrl !== undefined) {
-        updates.imageUrl = imageUrl;
-        changes.push(imageUrl ? "Updated location image." : "Removed location image.");
-      }
-      if (tip !== undefined) {
-        updates.tip = tip;
-        changes.push(tip ? "Updated location tip." : "Cleared location tip.");
-      }
-      if (googleMapsUrl !== undefined) {
-        updates.googleMapsUrl = googleMapsUrl;
-        changes.push(
-          googleMapsUrl ? "Updated Google Maps link." : "Cleared the Google Maps link."
-        );
-      }
-
-      const [updated] = await input.db
-        .update(locations)
-        .set(updates)
-        .where(eq(locations.id, location.id))
-        .returning();
-
-      await touchTrip(input.db, input.activeTrip.id);
-      revalidateTripViews();
-
-      await createAiActionLog(input.db, {
-        userId: input.appUser.id,
-        tripId: input.activeTrip.id,
-        conversationId: input.conversationId,
-        messageId: input.userMessageId,
-        actionType: "update_location",
-        summary: changes.join(" "),
-        details: {
-          locationId: location.id,
-          previous: snapshotLocation(location),
-          updated: snapshotLocation(updated),
-        },
-      });
-
-      return {
-        output: updated,
-        summary: changes.join(" ") || "No location changes were needed.",
-        cards: changes.length ? [buildMutationCard("Updated location", changes, location.name)] : [],
-        undoable: changes.length > 0,
-      };
-    }
-
-    case "delete_location": {
-      const parsedArgs = toolValidators.delete_location.parse(rawArguments);
-      const location = await input.db.query.locations.findFirst({
-        where: eq(locations.id, parsedArgs.locationId),
-        with: { day: true },
-      });
-      if (!location || location.day.tripId !== input.activeTrip.id) {
-        throw new Error("Location not found on the active trip.");
-      }
-
-      await input.db.delete(locations).where(eq(locations.id, location.id));
-      await touchTrip(input.db, input.activeTrip.id);
-      revalidateTripViews();
-
-      const summary = `Deleted location "${location.name}" from ${location.day.date}.`;
-      await createAiActionLog(input.db, {
-        userId: input.appUser.id,
-        tripId: input.activeTrip.id,
-        conversationId: input.conversationId,
-        messageId: input.userMessageId,
-        actionType: "delete_location",
-        summary,
-        details: {
-          locationId: location.id,
-          reason: parsedArgs.reason,
-          deletedLocation: snapshotLocation(location),
-        },
-      });
-
-      return {
-        output: { success: true, locationId: location.id },
-        summary,
-        cards: [buildMutationCard("Removed map location", [summary])],
+        cards: [buildMutationCard("Updated lists", lines)],
         undoable: true,
       };
     }
@@ -3461,206 +3150,78 @@ async function executeToolCall(input: {
       };
     }
 
-    case "store_traveler_profile": {
-      const parsedArgs = toolValidators.store_traveler_profile.parse(rawArguments);
-      const created = await upsertTravelerProfile(input.db, {
-        userId: input.appUser.id,
-        fullName: parsedArgs.fullName,
-        email: cleanNullable(parsedArgs.email) ?? null,
-        phone: cleanNullable(parsedArgs.phone) ?? null,
-        birthDate: cleanNullable(parsedArgs.birthDate) ?? null,
-        preferencesJson: parsedArgs.preferences ?? null,
-        loyaltyProgramsJson: parsedArgs.loyaltyPrograms ?? null,
-        isDefault: parsedArgs.isDefault,
-      });
+    default:
+      return { output: { error: `Unknown tool ${String(input.toolName)}` } };
+  }
+}
 
-      const summary = `Saved traveler profile for ${created.fullName}.`;
-      await createAiActionLog(input.db, {
-        userId: input.appUser.id,
-        tripId: input.activeTrip.id,
-        conversationId: input.conversationId,
-        messageId: input.userMessageId,
-        actionType: "store_traveler_profile",
-        summary,
-        details: created,
-      });
+const WEB_SEARCH_TOOL = { type: "web_search" } as const;
 
-      return {
-        output: created,
-        summary,
-        cards: [buildMutationCard("Saved traveler profile", [summary])],
-      };
-    }
-
-    case "create_external_approval": {
-      const parsedArgs = toolValidators.create_external_approval.parse(rawArguments);
-      const externalUrl = cleanNullable(parsedArgs.externalUrl) ?? null;
-      const payload = stringifyMaybeJson(parsedArgs.payloadJson);
-      const approval = await createAiApproval(input.db, {
-        userId: input.appUser.id,
-        tripId: input.activeTrip.id,
-        conversationId: input.conversationId,
-        messageId: input.userMessageId,
-        approvalType: parsedArgs.approvalType,
-        title: parsedArgs.title,
-        description: parsedArgs.description,
-        externalUrl,
-        payload,
-      });
-
-      if (parsedArgs.approvalType.startsWith("booking:")) {
-        const category = parsedArgs.approvalType.split(":")[1] || "booking";
-        await createBookingOrder(input.db, {
-          userId: input.appUser.id,
-          tripId: input.activeTrip.id,
-          reservationId: null,
-          category,
-          provider: cleanNullable(parsedArgs.provider) ?? "external",
-          status: "awaiting_approval",
-          offerId: null,
-          title: parsedArgs.title,
-          totalAmount: null,
-          currency: null,
-          externalUrl,
-          payloadJson: parsedArgs.payloadJson ?? null,
-        });
-      }
-
-      const summary = `Created an approval request for ${parsedArgs.title}.`;
-      await createAiActionLog(input.db, {
-        userId: input.appUser.id,
-        tripId: input.activeTrip.id,
-        conversationId: input.conversationId,
-        messageId: input.userMessageId,
-        actionType: "create_external_approval",
-        summary,
-        details: approval,
-      });
-
-      return {
-        output: approval,
-        summary,
-        cards: [
-          {
-            type: "approval",
-            approvalId: approval.id,
-            approvalType: approval.approvalType,
-            title: approval.title,
-            description: approval.description,
-            actionLabel:
-              approval.approvalType === "google_connect" ? "Connect Google" : "Approve",
-            provider: cleanNullable(parsedArgs.provider) ?? null,
-            externalUrl,
-          },
-        ],
-      };
-    }
-
-    case "sync_google_reservations": {
-      toolValidators.sync_google_reservations.parse(rawArguments);
-      const account = await getConnectedAccount(input.db, input.appUser.id, "google");
-      if (!account) {
-        const approval = await createAiApproval(input.db, {
-          userId: input.appUser.id,
-          tripId: input.activeTrip.id,
-          conversationId: input.conversationId,
-          messageId: input.userMessageId,
-          approvalType: "google_connect",
-          title: "Connect Google to import reservations",
-          description:
-            "Approve this to connect Gmail and Google Calendar so Northstar can import reservation emails and scheduled itinerary items.",
-          externalUrl: "/api/integrations/google/connect",
-        });
-
-        return {
-          output: approval,
-          summary: "Google is not connected yet, so I created a connect approval.",
-          cards: [
-            {
-              type: "approval",
-              approvalId: approval.id,
-              approvalType: approval.approvalType,
-              title: approval.title,
-              description: approval.description,
-              actionLabel: "Connect Google",
-              externalUrl: approval.externalUrl ?? "/api/integrations/google/connect",
-            },
-          ],
-          followups: ["Import reservations after connecting", "Keep planning without sync"],
-        };
-      }
-
-      const syncResult = await syncGoogleReservations({
-        userId: input.appUser.id,
-        tripId: input.activeTrip.id,
-      });
-      revalidateTripViews();
-
-      const summary = `Imported ${syncResult.importedCount} Google reservation${syncResult.importedCount === 1 ? "" : "s"}.`;
-      await createAiActionLog(input.db, {
-        userId: input.appUser.id,
-        tripId: input.activeTrip.id,
-        conversationId: input.conversationId,
-        messageId: input.userMessageId,
-        actionType: "sync_google_reservations",
-        summary,
-        details: { importedCount: syncResult.importedCount },
-      });
-
-      return {
-        output: {
-          importedCount: syncResult.importedCount,
-          reservations: syncResult.reservations.map((reservation) => ({
-            id: reservation.id,
-            title: reservation.title,
-            category: reservation.category,
-            source: reservation.source,
-          })),
-        },
-        summary,
-        cards: buildReservationCards(syncResult),
-      };
-    }
+function describeToolProgress(toolName: string, rawArguments: string, tripContext: AiTripContext) {
+  let args: Record<string, unknown> = {};
+  try {
+    args = JSON.parse(rawArguments || "{}") as Record<string, unknown>;
+  } catch {}
+  const dayLabel = () => {
+    const date = typeof args.date === "string" ? args.date : null;
+    const dayId = typeof args.dayId === "number" ? args.dayId : null;
+    const day = tripContext.days.find((item) => item.date === date || item.id === dayId);
+    return day ? `Day ${day.dayNumber}` : "the plan";
+  };
+  switch (toolName) {
+    case "set_trip_structure":
+      return "Reshaping the trip";
+    case "update_trip_details":
+      return "Updating trip details";
+    case "update_day_details":
+    case "set_day_itinerary":
+    case "create_event":
+    case "update_event":
+    case "delete_event":
+      return `Updating ${dayLabel()}`;
+    case "create_expense":
+    case "set_budget_items":
+      return "Updating the budget";
+    case "create_packing_item":
+    case "set_packing_list":
+      return "Updating the packing list";
+    case "create_reminder":
+      return "Adding a to-do";
+    case "update_list_items":
+      return "Updating your lists";
+    case "estimate_route":
+      return "Checking drive times";
+    default:
+      return "Working";
   }
 }
 
 async function callAiModel(input: {
   history: Awaited<ReturnType<typeof listAiMessages>>;
   tripContext: AiTripContext;
-  googleConnected: boolean;
   currentMessage: string;
-  model: string;
   files?: AiUploadedFile[];
   signal?: AbortSignal;
 }) {
   return createOpenAiResponse({
     body: {
-      model: input.model,
-      instructions: buildSystemPrompt({
-        tripContext: input.tripContext,
-        googleConnected: input.googleConnected,
-      }),
+      model: AI_MODEL,
+      reasoning: { effort: AI_REASONING_EFFORT },
+      instructions: buildSystemPrompt({ tripContext: input.tripContext }),
       input: buildUserInputWithGrounding(
         input.history,
         input.tripContext,
         input.currentMessage,
         input.files ?? []
       ),
-      tools: [
-        {
-          type: "web_search",
-          user_location: {
-            type: "approximate",
-            country: "US",
-            region: "Michigan",
-            city: "Detroit",
-          },
-        },
-        ...toolDefinitions,
-      ],
+      tools: [WEB_SEARCH_TOOL, ...toolDefinitions],
     },
     signal: input.signal,
   });
+}
+
+function hasWebSearchCall(response: Awaited<ReturnType<typeof createOpenAiResponse>>) {
+  return (response.output ?? []).some((item) => item.type === "web_search_call");
 }
 
 export async function runAiTurn(input: {
@@ -3669,10 +3230,15 @@ export async function runAiTurn(input: {
   conversationId?: number | null;
   message: string;
   uploadedFiles?: AiUploadedFile[];
-  modelMode?: AiModelMode;
   signal?: AbortSignal;
+  onProgress?: (label: string) => void;
 }) {
   const db = requireDb();
+  const progress = (label: string) => {
+    try {
+      input.onProgress?.(label);
+    } catch {}
+  };
 
   let conversation =
     input.conversationId && Number.isFinite(input.conversationId)
@@ -3708,21 +3274,18 @@ export async function runAiTurn(input: {
     const assistantMessage = await createAiMessage(db, {
       conversationId: conversation.id,
       role: "assistant",
-      content:
-        "Northstar AI is not configured yet. Add OPENAI_API_KEY to enable the concierge.",
-      followups: ["Set OPENAI_API_KEY", "Refresh after restart"],
+      content: "Northstar AI isn't configured on this server.",
+      followups: [],
     });
-
-    return {
-      conversation,
-      message: assistantMessage,
-    };
+    return { conversation, message: assistantMessage };
   }
 
   assertNotAborted(input.signal);
   let tripContext = await buildAiTripContext(db, input.activeTrip.id, input.appUser.id);
-  const googleConnected = Boolean(await getConnectedAccount(db, input.appUser.id, "google"));
-  const history = await listAiMessages(db, conversation.id);
+  // History excludes the message we just stored; it is sent separately as the current request.
+  const history = (await listAiMessages(db, conversation.id)).filter(
+    (message) => message.id !== userMessage.id
+  );
   const currentTurnFiles = input.uploadedFiles ?? [];
   const priorFiles = collectConversationFiles(history);
   const seenFileKeys = new Set<string>();
@@ -3732,21 +3295,12 @@ export async function runAiTurn(input: {
     seenFileKeys.add(key);
     return true;
   });
-  const modelRouting = chooseAiModel({
-    currentMessage: input.message,
-    history,
-    tripContext,
-    files: availableFiles,
-    modelMode: input.modelMode ?? "auto",
-  });
-  assertNotAborted(input.signal);
 
+  progress("Thinking");
   let response = await callAiModel({
     history,
     tripContext,
-    googleConnected,
     currentMessage: input.message,
-    model: modelRouting.model,
     files: availableFiles,
     signal: input.signal,
   });
@@ -3759,6 +3313,9 @@ export async function runAiTurn(input: {
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     assertNotAborted(input.signal);
+    if (hasWebSearchCall(response)) {
+      usedTools.push("web_search");
+    }
     const functionCalls = getFunctionCalls(response);
     if (!functionCalls.length) {
       break;
@@ -3775,6 +3332,7 @@ export async function runAiTurn(input: {
       }
 
       usedTools.push(toolName);
+      progress(describeToolProgress(toolName, call.arguments, tripContext));
       try {
         const result = await executeToolCall({
           db,
@@ -3787,23 +3345,12 @@ export async function runAiTurn(input: {
           rawArguments: call.arguments,
         });
         outputs.push(buildFunctionCallOutput(call.call_id, result.output));
-        if (result.cards?.length) {
-          cards.push(...result.cards);
-        }
-        if (result.summary) {
-          toolSummaries.push(result.summary);
-        }
-        if (result.followups?.length) {
-          followupsFromTools.push(...result.followups);
-        }
-        if (result.undoable) {
-          hasUndoableChanges = true;
-        }
+        if (result.cards?.length) cards.push(...result.cards);
+        if (result.summary) toolSummaries.push(result.summary);
+        if (result.followups?.length) followupsFromTools.push(...result.followups);
+        if (result.undoable) hasUndoableChanges = true;
 
-        if (
-          toolName !== "get_trip_snapshot" &&
-          toolName !== "estimate_route"
-        ) {
+        if (toolName !== "estimate_route") {
           assertNotAborted(input.signal);
           tripContext = await buildAiTripContext(db, input.activeTrip.id, input.appUser.id);
         }
@@ -3817,42 +3364,29 @@ export async function runAiTurn(input: {
     }
 
     assertNotAborted(input.signal);
+    progress("Thinking");
     response = await createOpenAiResponse({
       body: {
-        model: modelRouting.model,
+        model: AI_MODEL,
+        reasoning: { effort: AI_REASONING_EFFORT },
         previous_response_id: response.id,
         input: outputs,
-        tools: [
-          {
-            type: "web_search",
-            user_location: {
-              type: "approximate",
-              country: "US",
-              region: "Michigan",
-              city: "Detroit",
-            },
-          },
-          ...toolDefinitions,
-        ],
+        tools: [WEB_SEARCH_TOOL, ...toolDefinitions],
       },
       signal: input.signal,
     });
   }
 
   assertNotAborted(input.signal);
+  const sources = getResponseSources(response).slice(0, 6);
   let finalText = getResponseText(response);
   if (!finalText) {
     finalText = toolSummaries.length
-      ? `I updated the trip.\n\n${toolSummaries.join("\n")}`
-      : "I couldn't complete that request cleanly.";
+      ? `Updated the trip.\n\n${toolSummaries.join("\n")}`
+      : "I couldn't finish that. Try rephrasing or breaking it into smaller steps.";
   }
 
-  const followups = Array.from(
-    new Set([
-      ...followupsFromTools,
-      ...buildFollowups(finalText, cards, toolSummaries),
-    ])
-  ).slice(0, 3);
+  const followups = Array.from(new Set(followupsFromTools)).slice(0, 3);
 
   const assistantMessage = await createAiMessage(db, {
     conversationId: conversation.id,
@@ -3865,15 +3399,12 @@ export async function runAiTurn(input: {
       undoable: hasUndoableChanges,
       undoApplied: false,
       usedTools: Array.from(new Set(usedTools)),
-      model: modelRouting.model,
-      modelRouting,
+      model: AI_MODEL,
+      sources,
     },
   });
 
-  return {
-    conversation,
-    message: assistantMessage,
-  };
+  return { conversation, message: assistantMessage };
 }
 
 export async function undoAiTurnForAssistantMessage(input: {

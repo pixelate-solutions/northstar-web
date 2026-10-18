@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 import { locations } from "@/db/schema";
 import { requireRouteTripContext } from "@/lib/route-auth";
-import { locationSchema } from "@/lib/validation";
+import { locationSchema, parseJsonBody } from "@/lib/validation";
 
 function revalidateLocationViews() {
   revalidatePath("/app", "layout");
@@ -48,7 +48,9 @@ export async function PUT(
     return context.error;
   }
 
-  const payload = locationSchema.partial().parse(await request.json());
+  const parsed = await parseJsonBody(request, locationSchema.partial());
+  if ("error" in parsed) return parsed.error;
+  const payload = parsed.data;
   const nextDayId =
     payload.dayId === undefined ? context.location.dayId : Number(payload.dayId);
 

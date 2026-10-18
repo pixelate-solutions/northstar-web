@@ -1,122 +1,50 @@
 # Northstar
 
-Northstar is a multi-tenant travel planning SaaS built with Next.js, Clerk, Neon, Drizzle, and Stripe.
+Free trip planner at [northstartravelguide.com](https://www.northstartravelguide.com): every day of the trip on one map, with an AI assistant (OpenAI `gpt-6-luna`) that edits the plan and can undo its changes.
 
-The app now has:
+- `src/` — Next.js 16 web app and JSON API (Clerk auth, Drizzle + Neon Postgres)
+- `ios/` — native SwiftUI iPhone app (MapKit), same API and Clerk accounts
 
-- a public landing page at `/`
-- account-based authentication with Clerk
-- a paid app workspace under `/app`
-- trip ownership scoped to the signed-in user
-- multiple trips per account
-- a built-in Southwest template that can be copied into user accounts
-- Stripe-based lifetime access gating
-
-## Stack
-
-- Next.js 16 App Router + TypeScript
-- Tailwind CSS
-- Neon PostgreSQL + Drizzle ORM
-- Clerk
-- Stripe
-- React Leaflet + OpenStreetMap
-- React Big Calendar
-- DnD Kit
-- React Hook Form + Zod
-- Sonner
-- Recharts
-
-## Setup
+## Web
 
 ```bash
 npm install
-cp .env.example .env.local
+npm run dev        # uses .env.development.local, then .env.local
+npm run lint
+npm run build
 ```
 
-Add the required environment variables:
+Local development should point `DATABASE_URL` at a local Postgres (set it in `.env.development.local`). `drizzle.config.ts` prefers that file too, so `npm run db:migrate` targets the local database unless `DATABASE_URL` is set explicitly in the shell.
+
+Secrets live in Infisical (project **Northstar**, environment `prod`) and Vercel (project `northstar`).
+
+### Environment
+
+```
+DATABASE_URL
+NEXT_PUBLIC_BASE_URL
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+CLERK_SECRET_KEY
+OPENAI_API_KEY
+OPENWEATHER_API_KEY
+```
+
+### Tests
+
+End-to-end tests use Playwright with a Clerk test user (`e2e+clerk_test@…`, credentials in `.env.e2e.local`):
 
 ```bash
-DATABASE_URL=
-NEXT_PUBLIC_BASE_URL=http://localhost:3000
-
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
-CLERK_SECRET_KEY=
-
-STRIPE_SECRET_KEY=
-STRIPE_PRICE_ID=
-STRIPE_WEBHOOK_SECRET=
-
-OPENWEATHER_API_KEY=
-OPENAI_API_KEY=
-
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=
-GOOGLE_SYNC_ENCRYPTION_SECRET=
-
-BOOKING_COM_AFFILIATE_ID=
-BOOKING_COM_API_TOKEN=
-
-SANDBOX_OR_PRODUCTION=sandbox
-
-DUFFEL_SANDBOX_API_TOKEN=
-DUFFEL_PRODUCTION_API_TOKEN=
-
-VIATOR_SANDBOX_API_KEY=
-VIATOR_PRODUCTION_API_KEY=
+npx playwright test                 # desktop + mobile against E2E_BASE_URL (default http://localhost:3001)
 ```
 
-Then generate and apply the database changes:
+## API (used by the web app and iOS)
 
-```bash
-npm run db:generate
-npm run db:migrate
-```
+All routes accept Clerk session cookies or `Authorization: Bearer <Clerk session token>` and act on the user's active trip.
 
-To seed a local demo account and starter trip:
-
-```bash
-npm run db:seed
-```
-
-Start development:
-
-```bash
-npm run dev
-```
-
-## AI Concierge
-
-Northstar now includes an in-app AI concierge inside `/app` that can:
-
-- plan and edit the active trip in natural language
-- research live travel options with OpenAI web search
-- add itinerary events, reminders, expenses, packing items, and locations
-- request approval for external actions like Google account connection or booking handoff
-- import Google reservation context once Gmail and Google Calendar are connected
-
-To enable the AI stack locally, add `OPENAI_API_KEY` and run the generated migration:
-
-```bash
-npm run db:migrate
-```
-
-Google sync and provider-backed booking scaffolding require their respective credentials. If those env vars are missing, the UI still works, but external sync/booking flows stay approval-only or unavailable.
-
-## Billing Flow
-
-The current purchase flow is:
-
-1. Sign up with Clerk
-2. Enter the app
-3. Hit the `/unlock` paywall
-4. Complete Stripe Checkout
-5. Unlock lifetime access
-
-The success redirect and Stripe webhook both support granting access.
-
-## Notes
-
-- The old Southwest trip data is preserved as the built-in template source.
-- `src/db/seed.ts` is now treated as template data input, while `src/db/seed-app.ts` handles demo seeding for the new schema.
-- AI subscription features are not implemented yet; the data model is prepared for a paid core product first.
+- `GET /api/me` — user and trips
+- `GET /api/trip?tripId=` — full plan for the active trip (switches trip when `tripId` is given)
+- `POST|PATCH|DELETE /api/events[/:id]`, `PATCH /api/events/reorder` — stops
+- `PUT /api/days/:date`, `POST /api/days` — day details, trip dates
+- `/api/packing`, `/api/reminders`, `/api/expenses` — lists and budget (PATCH only changes the fields sent)
+- `GET /api/places?q=` — place search
+- `POST /api/ai/chat` — NDJSON stream (`status`, `conversation`, `message_start`, `text_delta`, `cards`, `done`, `error`); `POST /api/ai/messages/:id/undo`

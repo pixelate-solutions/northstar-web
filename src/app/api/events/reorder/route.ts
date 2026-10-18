@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { events } from "@/db/schema";
 import { requireRouteTripContext } from "@/lib/route-auth";
-import { reorderSchema } from "@/lib/validation";
+import { reorderSchema, parseJsonBody } from "@/lib/validation";
 
 export async function PATCH(request: Request) {
   const context = await requireRouteTripContext({ minimumRole: "collaborator" });
@@ -11,7 +11,9 @@ export async function PATCH(request: Request) {
     return context.error;
   }
 
-  const payload = reorderSchema.parse(await request.json());
+  const parsed = await parseJsonBody(request, reorderSchema);
+  if ("error" in parsed) return parsed.error;
+  const payload = parsed.data;
   const existingEvents = await Promise.all(
     payload.items.map((item) =>
       context.db.query.events.findFirst({

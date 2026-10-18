@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 import { events } from "@/db/schema";
 import { requireRouteTripContext } from "@/lib/route-auth";
-import { eventSchema } from "@/lib/validation";
+import { eventPatchSchema, parseJsonBody } from "@/lib/validation";
 
 function revalidateAppPaths() {
   revalidatePath("/app", "layout");
@@ -49,22 +49,31 @@ export async function PUT(
     return context.error;
   }
 
-  const payload = eventSchema.parse(await request.json());
+  const parsed = await parseJsonBody(request, eventPatchSchema);
+  if ("error" in parsed) return parsed.error;
+  const payload = parsed.data;
+
+  if (payload.dayId !== undefined && payload.dayId !== context.event.dayId) {
+    const targetDay = await context.db.query.days.findFirst({
+      where: (table, { and, eq }) =>
+        and(eq(table.id, payload.dayId!), eq(table.tripId, context.activeTrip.id)),
+    });
+    if (!targetDay) {
+      return NextResponse.json({ error: "Day not found for this trip." }, { status: 404 });
+    }
+  }
+
   const [updated] = await context.db
     .update(events)
-    .set({
-      ...payload,
-      cost: payload.cost === null ? null : String(payload.cost),
-      lat: payload.lat === null ? null : String(payload.lat),
-      lng: payload.lng === null ? null : String(payload.lng),
-      updatedAt: new Date(),
-    })
+    .set({ ...payload, updatedAt: new Date() })
     .where(eq(events.id, eventId))
     .returning();
 
   revalidateAppPaths();
   return NextResponse.json(updated);
 }
+
+export const PATCH = PUT;
 
 export async function DELETE(
   _request: Request,

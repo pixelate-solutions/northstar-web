@@ -1,13 +1,10 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { z } from "zod";
 
 import { packingItems } from "@/db/schema";
 import { requireRouteTripContext } from "@/lib/route-auth";
-import { packingItemSchema } from "@/lib/validation";
-
-type PartialPackingItemPayload = Partial<z.infer<typeof packingItemSchema>>;
+import { packingItemPatchSchema, parseJsonBody } from "@/lib/validation";
 
 function revalidatePacking() {
   revalidatePath("/app", "layout");
@@ -46,19 +43,10 @@ export async function PUT(
     return context.error;
   }
 
-  let payload: PartialPackingItemPayload;
-  try {
-    payload = packingItemSchema.partial().parse(await request.json());
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Invalid packing item payload.", details: error.flatten() },
-        { status: 400 }
-      );
-    }
-
-    throw error;
-  }
+  const parsed = await parseJsonBody(request, packingItemPatchSchema);
+  if ("error" in parsed) return parsed.error;
+  const payload = parsed.data;
+  if (!Object.keys(payload).length) return NextResponse.json(context.item);
 
   const nextDayId = payload.daySpecific;
   if (typeof nextDayId === "number") {
@@ -74,21 +62,15 @@ export async function PUT(
 
   const [updated] = await context.db
     .update(packingItems)
-    .set({
-      ...(payload.category !== undefined ? { category: payload.category } : {}),
-      ...(payload.name !== undefined ? { name: payload.name } : {}),
-      ...(payload.quantity !== undefined ? { quantity: payload.quantity } : {}),
-      ...(payload.isPacked !== undefined ? { isPacked: payload.isPacked } : {}),
-      ...(payload.isEssential !== undefined ? { isEssential: payload.isEssential } : {}),
-      ...(payload.daySpecific !== undefined ? { daySpecific: payload.daySpecific } : {}),
-      ...(payload.notes !== undefined ? { notes: payload.notes || null } : {}),
-    })
+    .set(payload)
     .where(eq(packingItems.id, context.item.id))
     .returning();
 
   revalidatePacking();
   return NextResponse.json(updated);
 }
+
+export const PATCH = PUT;
 
 export async function DELETE(
   _request: Request,

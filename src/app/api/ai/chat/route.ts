@@ -3,12 +3,13 @@ import { runAiTurn } from "@/lib/ai/orchestrator";
 import {
   toConversationSummary,
   toMessagePayload,
-  type AiModelMode,
   type AiUploadedFile,
 } from "@/lib/ai/types";
 import { requireRouteTripContext } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
+// Multi-step planning turns (web search + many tool calls) can take a few minutes.
+export const maxDuration = 300;
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const MAX_FILES_PER_MESSAGE = 6;
@@ -21,7 +22,6 @@ const SUPPORTED_FILE_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
-const MODEL_MODES = new Set<AiModelMode>(["auto", "gpt-5.4", "gpt-5.4-mini"]);
 
 function createAbortError() {
   const error = new Error("The operation was aborted.");
@@ -57,12 +57,6 @@ function isSupportedUpload(file: File) {
   return /\.(pdf|txt|md|markdown|csv|json|docx|xlsx)$/i.test(file.name);
 }
 
-function parseModelMode(value: unknown): AiModelMode {
-  return typeof value === "string" && MODEL_MODES.has(value as AiModelMode)
-    ? (value as AiModelMode)
-    : "auto";
-}
-
 async function parseChatRequest(request: Request) {
   const contentType = request.headers.get("content-type") ?? "";
 
@@ -81,19 +75,17 @@ async function parseChatRequest(request: Request) {
     return {
       message,
       conversationId: Number.isFinite(conversationId) ? conversationId : null,
-      modelMode: parseModelMode(formData.get("modelMode")),
       files,
     };
   }
 
   const payload = (await request.json().catch(() => null)) as
-    | { message?: string; conversationId?: number | null; modelMode?: string | null }
+    | { message?: string; conversationId?: number | null }
     | null;
 
   return {
     message: payload?.message ?? "",
     conversationId: payload?.conversationId ?? null,
-    modelMode: parseModelMode(payload?.modelMode),
     files: [] as File[],
   };
 }
@@ -183,8 +175,8 @@ export async function POST(request: Request) {
           conversationId: payload.conversationId ?? null,
           message: message || "Please read and summarize the uploaded file(s).",
           uploadedFiles,
-          modelMode: payload.modelMode,
           signal: request.signal,
+          onProgress: (label) => write({ type: "status", value: label }),
         });
 
         assertNotAborted();

@@ -91,7 +91,7 @@ export default function PrivacyPage() {
             <h2 style={{ fontSize: 20, color: "#0f172a", marginBottom: 10 }}>How we use it</h2>
             <p style={{ fontSize: 15, color: "#475569", lineHeight: 1.75 }}>
               We use your information to operate the app, save your trips, power AI planning and
-              recommendations, process payments, support connected integrations, improve product
+              recommendations, improve product
               reliability, and protect the service from abuse.
             </p>
           </section>
@@ -114,8 +114,7 @@ export default function PrivacyPage() {
             </h2>
             <p style={{ fontSize: 15, color: "#475569", lineHeight: 1.75 }}>
               We do not sell your personal information. We share data with service providers that
-              help us run Northstar, such as hosting, authentication, payments, AI, and connected
-              integrations. We store data for as long as needed to operate the service, meet legal
+              help us run Northstar, such as hosting, authentication, maps, and AI. We store data for as long as needed to operate the service, meet legal
               obligations, and resolve disputes.
             </p>
           </section>

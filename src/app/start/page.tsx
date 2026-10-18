@@ -18,5 +18,5 @@ export default async function StartPage() {
     redirect(buildAuthHref("/sign-up"));
   }
 
-  redirect(appUser.hasLifetimeAccess ? "/app" : "/unlock");
+  redirect("/app");
 }

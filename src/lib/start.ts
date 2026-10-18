@@ -1,4 +1,4 @@
-const DEFAULT_START_PATH = "/start";
+const DEFAULT_START_PATH = "/app";
 
 export function getSafeRedirectPath(value?: string | string[] | null) {
   const path = Array.isArray(value) ? value[0] : value;

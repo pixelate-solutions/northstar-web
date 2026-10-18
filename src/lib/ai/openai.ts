@@ -129,3 +129,20 @@ export function buildFunctionCallOutput(callId: string, output: unknown) {
     output: typeof output === "string" ? output : JSON.stringify(output),
   };
 }
+
+/** url_citation annotations from web search, deduped by URL. */
+export function getResponseSources(response: ResponsesApiResponse) {
+  const sources: Array<{ url: string; title: string }> = [];
+  for (const item of response.output ?? []) {
+    if (item.type !== "message") continue;
+    for (const content of (item as ResponsesMessage).content ?? []) {
+      const annotations = (content as { annotations?: Array<{ type?: string; url?: string; title?: string }> }).annotations ?? [];
+      for (const annotation of annotations) {
+        if (annotation.type === "url_citation" && annotation.url && !sources.some((s) => s.url === annotation.url)) {
+          sources.push({ url: annotation.url, title: annotation.title ?? annotation.url });
+        }
+      }
+    }
+  }
+  return sources;
+}

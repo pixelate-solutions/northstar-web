@@ -1,37 +1,36 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
+  content: ["./src/components/**/*.{ts,tsx}", "./src/app/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        background: "rgb(var(--background) / <alpha-value>)",
-        foreground: "rgb(var(--foreground) / <alpha-value>)",
-        card: "rgb(var(--card) / <alpha-value>)",
-        "card-foreground": "rgb(var(--card-foreground) / <alpha-value>)",
-        popover: "rgb(var(--popover) / <alpha-value>)",
-        "popover-foreground": "rgb(var(--popover-foreground) / <alpha-value>)",
-        primary: "rgb(var(--primary) / <alpha-value>)",
-        "primary-foreground": "rgb(var(--primary-foreground) / <alpha-value>)",
-        secondary: "rgb(var(--secondary) / <alpha-value>)",
-        "secondary-foreground": "rgb(var(--secondary-foreground) / <alpha-value>)",
-        muted: "rgb(var(--muted) / <alpha-value>)",
-        "muted-foreground": "rgb(var(--muted-foreground) / <alpha-value>)",
-        accent: "rgb(var(--accent) / <alpha-value>)",
-        "accent-foreground": "rgb(var(--accent-foreground) / <alpha-value>)",
-        destructive: "rgb(var(--destructive) / <alpha-value>)",
-        border: "rgb(var(--border) / <alpha-value>)",
-        input: "rgb(var(--input) / <alpha-value>)",
-        ring: "rgb(var(--ring) / <alpha-value>)",
+        ink: "#111110",
+        lane: "#FFC500",
+        "lane-soft": "#FFF4CC",
+        go: "#0B6B4F",
+        stop: "#B3261E",
+        surface: "#F3F3F1",
+        line: "#E4E4E1",
+        muted: "#62625E",
+        faint: "#8A8A84",
+        land: "#EEEDE8",
+        // shadcn compatibility (toasts, legacy primitives)
+        background: "#FFFFFF",
+        foreground: "#111110",
+        border: "#E4E4E1",
       },
-      borderRadius: {
-        lg: "var(--radius)",
-        xl: "calc(var(--radius) + 4px)",
-        "2xl": "calc(var(--radius) + 10px)",
+      fontFamily: {
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
+      },
+      letterSpacing: {
+        display: "-0.035em",
+        tightish: "-0.015em",
+      },
+      boxShadow: {
+        pop: "0 0 0 1px rgba(17,17,16,0.06), 0 20px 44px rgba(17,17,16,0.14)",
+        float: "0 2px 10px rgba(17,17,16,0.12)",
       },
     },
   },

@@ -5,7 +5,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 
 import { days, locations } from "@/db/schema";
 import { requireRouteTripContext } from "@/lib/route-auth";
-import { locationSchema } from "@/lib/validation";
+import { locationSchema, parseJsonBody } from "@/lib/validation";
 
 function revalidateLocationViews() {
   revalidatePath("/app", "layout");
@@ -63,7 +63,9 @@ export async function POST(request: Request) {
     return context.error;
   }
 
-  const payload = locationSchema.parse(await request.json());
+  const parsed = await parseJsonBody(request, locationSchema);
+  if ("error" in parsed) return parsed.error;
+  const payload = parsed.data;
   const ownedDay = await context.db.query.days.findFirst({
     where: (table, { and, eq }) =>
       and(eq(table.id, payload.dayId), eq(table.tripId, context.activeTrip.id)),
