@@ -138,13 +138,22 @@ test("budget: add an expense and mark it paid without losing its date", async ({
 test("trip switcher changes trips", async ({ page }) => {
   await page.goto("/app");
   const before = (await bundle(page)).trip;
+  // Make sure there is a second trip to switch to (the e2e account may only own its starter trip).
+  let tempTripId: number | null = null;
+  const me = await (await page.request.get("/api/me")).json();
+  if (me.trips.length < 2) {
+    tempTripId = (await (await page.request.post("/api/trips", { data: { name: `E2E Switch ${stamp}`, totalDays: 2 } })).json()).id;
+    await page.request.get(`/api/trip?tripId=${before.id}`);
+    await page.reload();
+  }
   await page.locator("aside").getByRole("button", { name: new RegExp(before.name) }).click();
   const other = page.locator("[class*='shadow-pop'] button").filter({ hasNotText: before.name }).filter({ hasNotText: "New trip" }).first();
   const otherName = (await other.locator("span span").first().textContent())!.trim();
   await other.click();
   await expect(page.locator("h1")).toHaveText(otherName);
-  // Switch back.
+  // Switch back and clean up.
   await page.request.get(`/api/trip?tripId=${before.id}`);
+  if (tempTripId) await page.request.delete(`/api/trips/${tempTripId}`);
 });
 
 test("new trip: create blank, then delete it", async ({ page }) => {

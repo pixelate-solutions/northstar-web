@@ -25,7 +25,7 @@ test("Ask Northstar edits the plan and Undo reverts it", async ({ page }) => {
 
   await page.goto(`/app/days/${day.date}`);
   await page.getByPlaceholder("Ask Northstar").first().fill(
-    `Add one stop to Day ${day.dayNumber} called "${title}" at 7:15 AM at a real coffee shop near the day's first stop. Don't change anything else.`
+    `Add one stop to Day ${day.dayNumber} called "${title}" at 7:15 AM at Blue Bottle Coffee in the Ferry Building, San Francisco. Don't change anything else.`
   );
   await page.getByPlaceholder("Ask Northstar").first().press("Enter");
 
