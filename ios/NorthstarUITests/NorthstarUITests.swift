@@ -521,6 +521,35 @@ final class NorthstarUITests: XCTestCase {
         attach("live-update")
     }
 
+    /// Pasting a copied photo into Ask attaches it, and the assistant can read it.
+    func testAskPasteImage() throws {
+        signInIfNeeded()
+        // A solid red image on the clipboard.
+        let red = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 96)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 96, height: 96))
+        }
+        UIPasteboard.general.image = red
+
+        app.tabBars.buttons["Ask"].tap()
+        let input = app.textViews["ask-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        input.tap()
+        input.press(forDuration: 1.1)
+        let paste = app.menuItems["Paste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 5), "Paste should be offered for a copied photo")
+        paste.tap()
+        let chip = app.descendants(matching: .any).matching(identifier: "pending-attachment").firstMatch
+        XCTAssertTrue(chip.waitForExistence(timeout: 5), "Pasted photo should become an attachment")
+        attach("ask-pasted-photo")
+        input.typeText("Without using any tools: what single color fills this image? Answer with one word.")
+        app.buttons["ask-send"].tap()
+        let answer = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'red' AND NOT (label CONTAINS[c] 'single color')")).firstMatch
+        XCTAssertTrue(answer.waitForExistence(timeout: 150), "Assistant should describe the pasted photo")
+        attach("ask-photo-answer")
+        XCTAssertTrue(app.buttons["ask-attach"].exists, "Attach menu is available")
+    }
+
     func testEditProfileName() throws {
         signInIfNeeded()
         func rename(to last: String) {

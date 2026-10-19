@@ -137,6 +137,7 @@ struct AICard: Codable, Hashable {
 struct AIMessage: Codable, Identifiable, Hashable {
     struct Source: Codable, Hashable { let url: String; let title: String }
     struct Step: Codable, Hashable { let kind: String; let text: String }
+    struct Attachment: Codable, Hashable { let filename: String; var mimeType: String?; var kind: String? }
     struct Metadata: Codable, Hashable {
         var undoable: Bool?
         var undoApplied: Bool?
@@ -145,6 +146,8 @@ struct AIMessage: Codable, Identifiable, Hashable {
         var thoughtMs: Double?
         /// Answered by the on-device model while offline (not saved to the server).
         var onDevice: Bool?
+        /// Photos and files sent with a user message.
+        var attachments: [Attachment]?
     }
     var id: Int
     var role: String

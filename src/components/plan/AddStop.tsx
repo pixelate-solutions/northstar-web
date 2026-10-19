@@ -29,20 +29,42 @@ export function AddStop({ dayId, near, onAdded }: { dayId: number; near: { lat: 
   const { addEvent } = useTrip();
   const [{ use24Hour }] = usePrefs();
   const [editing, setEditing] = useState(false);
-  const [text, setText] = useState("");
+  const [name, setName] = useState("");
+  const [locationQuery, setLocationQuery] = useState("");
+  const [place, setPlace] = useState<PlaceResult | null>(null);
+  const [time, setTime] = useState(nowClock);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const { time, rest } = splitLeadingTime(text);
-  const { results } = usePlaceSearch(editing ? rest : "", near);
+  const [locationFocused, setLocationFocused] = useState(false);
+  const { results } = usePlaceSearch(editing && locationFocused && !place ? locationQuery : "", near);
 
-  async function create(place?: PlaceResult) {
-    const title = place?.name ?? rest.trim();
+  function reset() {
+    setName("");
+    setLocationQuery("");
+    setPlace(null);
+    setTime(nowClock());
+    setActiveIndex(-1);
+    setEditing(false);
+  }
+
+  function pick(result: PlaceResult) {
+    setPlace(result);
+    setLocationQuery(result.address ? `${result.name}, ${result.address}` : result.name);
+    if (!name.trim()) setName(result.name);
+    setActiveIndex(-1);
+  }
+
+  async function create() {
+    // "7:30p Dinner" in the name still sets the time.
+    const { time: typedTime, rest } = splitLeadingTime(name);
+    const title = (rest.trim() || place?.name || "").slice(0, 200);
     if (!title) return;
-    setText("");
+    const location = place ? (place.address ? `${place.name}, ${place.address}` : place.name) : locationQuery.trim() || null;
+    reset();
     const created = await addEvent(dayId, {
       title,
-      startTime: time ?? nowClock(),
+      startTime: typedTime ?? (time || nowClock()),
       category: guessCategory(`${title} ${place?.address ?? ""}`),
-      location: place ? (place.address ? `${place.name}, ${place.address}` : place.name) : null,
+      location,
       lat: place ? String(place.lat) : null,
       lng: place ? String(place.lng) : null,
     });
@@ -65,42 +87,72 @@ export function AddStop({ dayId, near, onAdded }: { dayId: number; near: { lat: 
     );
   }
 
+  const field = "h-11 w-full rounded-[10px] bg-white px-3 text-[15px] font-medium placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-ink";
+
   return (
-    <div className="relative mt-1.5">
-      <div className="flex h-[54px] items-center gap-3 rounded-[12px] bg-surface px-3 sm:gap-3.5">
-        <span className="w-10 shrink-0 font-mono text-[12px] font-medium text-muted sm:w-11 sm:text-[13px]">{time ?? ""}</span>
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-[1.5px] border-dashed border-[#B9B9B4]">
-          <Plus size={14} strokeWidth={2.4} />
-        </span>
+    <form
+      className="relative mt-1.5 flex flex-col gap-2 rounded-[14px] bg-surface p-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void create();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") reset();
+      }}
+    >
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Name"
+        className={field}
+        aria-label="New stop"
+      />
+      <div className="relative">
         <input
-          autoFocus
-          value={text}
+          value={locationQuery}
           onChange={(e) => {
-            setText(e.target.value);
+            setLocationQuery(e.target.value);
+            setPlace(null);
             setActiveIndex(-1);
           }}
-          onBlur={() => window.setTimeout(() => !text.trim() && setEditing(false), 150)}
+          onFocus={() => setLocationFocused(true)}
+          onBlur={() => window.setTimeout(() => setLocationFocused(false), 150)}
           onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              setText("");
-              setEditing(false);
-            } else if (e.key === "ArrowDown" && results.length) {
+            if (!results.length) return;
+            if (e.key === "ArrowDown") {
               e.preventDefault();
               setActiveIndex((i) => Math.min(i + 1, results.length - 1));
-            } else if (e.key === "ArrowUp" && results.length) {
+            } else if (e.key === "ArrowUp") {
               e.preventDefault();
               setActiveIndex((i) => Math.max(i - 1, 0));
-            } else if (e.key === "Enter") {
+            } else if (e.key === "Enter" && activeIndex >= 0) {
               e.preventDefault();
-              void create(activeIndex >= 0 ? results[activeIndex] : undefined);
+              pick(results[activeIndex]);
             }
           }}
-          placeholder="Search a place or type a stop"
-          className="min-w-0 flex-1 bg-transparent text-[16px] font-medium placeholder:text-faint"
-          aria-label="New stop"
+          placeholder="Location"
+          className={field}
+          aria-label="New stop location"
         />
+        {locationFocused && !place ? <PlaceResults results={results} activeIndex={activeIndex} onPick={pick} /> : null}
       </div>
-      <PlaceResults results={results} activeIndex={activeIndex} onPick={(place) => void create(place)} />
-    </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="time"
+          value={time}
+          onChange={(e) => setTime(e.target.value)}
+          className={`${field} w-auto font-mono`}
+          aria-label="New stop time"
+        />
+        <span className="flex-1" />
+        <button type="button" onClick={reset} className="h-10 rounded-full px-4 text-[14px] font-semibold text-muted hover:text-ink">
+          Cancel
+        </button>
+        <button type="submit" disabled={!name.trim() && !place} className="h-10 rounded-full bg-ink px-5 text-[14px] font-bold text-white disabled:opacity-40">
+          Add
+        </button>
+      </div>
+    </form>
   );
 }

@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct AskScreen: View {
@@ -15,7 +16,15 @@ struct AskScreen: View {
     @State private var useOnDevice = false
     @State private var offerOnDevice: String?
     @State private var onDeviceAssistant: AnyObject?
-    @FocusState private var focused: Bool
+    @State private var focused = false
+    @State private var composerHeight: CGFloat = 44
+    @State private var attachments: [ChatAttachment] = []
+    /// Thumbnails for photos sent this session (history only keeps file names).
+    @State private var sentThumbnails: [Int: [UIImage]] = [:]
+    @State private var photoItems: [PhotosPickerItem] = []
+    @State private var choosingPhotos = false
+    @State private var choosingFiles = false
+    @State private var takingPhoto = false
 
     private var running: Bool { status != nil }
 
@@ -41,13 +50,21 @@ struct AskScreen: View {
                             }
                             ForEach(messages) { message in
                                 if message.role == "user" {
-                                    HStack {
-                                        Spacer(minLength: 40)
-                                        Text(message.content)
-                                            .font(NS.sans(16, .medium))
-                                            .padding(.horizontal, 16).padding(.vertical, 12)
-                                            .background(UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 18, bottomTrailingRadius: 4, topTrailingRadius: 18).fill(NS.surface))
+                                    VStack(alignment: .trailing, spacing: 6) {
+                                        if let sent = message.metadata?.attachments, !sent.isEmpty {
+                                            SentAttachmentsRow(attachments: sent, thumbnails: sentThumbnails[message.id] ?? [])
+                                        }
+                                        if !message.content.isEmpty {
+                                            HStack {
+                                                Spacer(minLength: 40)
+                                                Text(message.content)
+                                                    .font(NS.sans(16, .medium))
+                                                    .padding(.horizontal, 16).padding(.vertical, 12)
+                                                    .background(UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 18, bottomTrailingRadius: 4, topTrailingRadius: 18).fill(NS.surface))
+                                            }
+                                        }
                                     }
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
                                 } else {
                                     AssistantMessageView(message: message, undoing: undoing == message.id) { Task { await undo(message) } }
                                 }
@@ -159,16 +176,32 @@ struct AskScreen: View {
                 }
                 .fadedEdges(.horizontal, length: 12)
             }
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("", text: $text, prompt: Text("Ask Northstar").foregroundStyle(Color(white: 0.64)), axis: .vertical)
-                    .lineLimit(1...6)
-                    .font(NS.sans(16, .medium))
-                    .foregroundStyle(.white)
-                    .tint(NS.lane)
-                    .focused($focused)
-                    .padding(.vertical, 10)
-                    .submitLabel(.send)
-                    .onSubmit { send(text) }
+            if !attachments.isEmpty {
+                PendingAttachmentsRow(attachments: attachments) { removed in attachments.removeAll { $0.id == removed.id } }
+                    .padding(.horizontal, 12)
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                Menu {
+                    Button { choosingPhotos = true } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        Button { takingPhoto = true } label: { Label("Take Photo", systemImage: "camera") }
+                    }
+                    Button { choosingFiles = true } label: { Label("Choose File", systemImage: "folder") }
+                    if UIPasteboard.general.hasImages || UIPasteboard.general.hasURLs {
+                        Button { pasteFromClipboard() } label: { Label("Paste", systemImage: "doc.on.clipboard") }
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Color(white: 0.75))
+                        .frame(width: 34, height: 44)
+                }
+                .accessibilityLabel("Attach")
+                .accessibilityIdentifier("ask-attach")
+                ComposerTextView(text: $text, height: $composerHeight, isFocused: $focused, placeholder: "Ask Northstar") { pasted in
+                    add(pasted)
+                }
+                .frame(height: composerHeight)
                 Button {
                     if running { task?.cancel(); status = nil; liveSteps = [] } else { send(text) }
                 } label: {
@@ -181,7 +214,7 @@ struct AskScreen: View {
                 .accessibilityLabel(running ? "Stop" : "Send")
                 .accessibilityIdentifier("ask-send")
             }
-            .padding(.leading, 18).padding(.trailing, 6).padding(.vertical, 6)
+            .padding(.leading, 8).padding(.trailing, 6).padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(NS.ink))
             .padding(.horizontal, 12)
             .simultaneousGesture(
@@ -193,6 +226,46 @@ struct AskScreen: View {
         }
         .padding(.top, 8)
         .padding(.bottom, 8)
+        .photosPicker(isPresented: $choosingPhotos, selection: $photoItems, maxSelectionCount: AttachmentUploader.maxPerMessage, matching: .images)
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            photoItems = []
+            Task {
+                var added: [ChatAttachment] = []
+                for item in items {
+                    if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data), let attachment = ChatAttachment.image(image) {
+                        added.append(attachment)
+                    }
+                }
+                add(added)
+            }
+        }
+        .fileImporter(isPresented: $choosingFiles, allowedContentTypes: ChatAttachment.importableTypes, allowsMultipleSelection: true) { result in
+            if case .success(let urls) = result { add(urls.compactMap(ChatAttachment.file(at:))) }
+        }
+        .fullScreenCover(isPresented: $takingPhoto) {
+            CameraPicker { image in if let attachment = ChatAttachment.image(image) { add([attachment]) } }
+                .ignoresSafeArea()
+        }
+    }
+
+    // MARK: Attachments
+
+    private func add(_ new: [ChatAttachment]) {
+        guard !new.isEmpty else { return }
+        let room = AttachmentUploader.maxPerMessage - attachments.count
+        if new.count > room { store.errorMessage = "Attach up to \(AttachmentUploader.maxPerMessage) files per message." }
+        for attachment in new.prefix(max(0, room)) {
+            attachments.append(attachment)
+            attachment.startUpload()
+        }
+    }
+
+    private func pasteFromClipboard() {
+        let board = UIPasteboard.general
+        var pasted = (board.images ?? []).compactMap { ChatAttachment.image($0, name: "Pasted photo") }
+        pasted += (board.urls ?? []).filter(\.isFileURL).compactMap(ChatAttachment.file(at:))
+        add(pasted)
     }
 
     // MARK: History
@@ -240,23 +313,46 @@ struct AskScreen: View {
 
     private func send(_ raw: String) {
         let message = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !message.isEmpty, !running else { return }
+        let sending = attachments
+        guard !message.isEmpty || !sending.isEmpty, !running else { return }
+        if let failed = sending.first(where: { $0.error != nil }) {
+            store.errorMessage = "\(failed.filename) didn't upload. Remove it or attach it again."
+            return
+        }
+        if !sending.isEmpty && useOnDevice && !Connectivity.shared.isOnline {
+            store.errorMessage = "Photos and files need a connection; the offline assistant can't read them."
+            return
+        }
         text = ""
-        messages.append(AIMessage(id: -Int(Date().timeIntervalSince1970), role: "user", content: message, cards: [], followups: [], metadata: nil))
+        attachments = []
+        let messageId = -Int(Date().timeIntervalSince1970)
+        var metadata: AIMessage.Metadata?
+        if !sending.isEmpty {
+            metadata = AIMessage.Metadata(attachments: sending.map { .init(filename: $0.filename, mimeType: $0.mimeType, kind: $0.isImage ? "image" : "file") })
+            sentThumbnails[messageId] = sending.compactMap(\.thumbnail)
+        }
+        messages.append(AIMessage(id: messageId, role: "user", content: message, cards: [], followups: [], metadata: metadata))
         status = "Thinking"
         liveSteps = []
         let before = store.bundle
         if useOnDevice && !Connectivity.shared.isOnline {
             task = Task { await respondOnDevice(message) }
         } else {
-            task = Task { await stream(message, before: before) }
+            task = Task { await stream(message, attachments: sending, before: before) }
         }
     }
 
-    private func stream(_ message: String, before: TripBundle?) async {
+    private func stream(_ message: String, attachments sending: [ChatAttachment] = [], before: TripBundle?) async {
         defer { if !Task.isCancelled { status = nil; liveSteps = [] } }
         do {
             var body: [String: JSON] = ["message": .string(message)]
+            if !sending.isEmpty {
+                status = "Uploading"
+                var refs: [JSON] = []
+                for attachment in sending { refs.append(.string(try await attachment.uploadedRef())) }
+                body["attachments"] = .array(refs)
+                status = "Thinking"
+            }
             if let id = store.askConversationId { body["conversationId"] = .int(id) }
             let request = try await APIClient.shared.request("/api/ai/chat", method: "POST", body: body)
             let (bytes, response) = try await URLSession.shared.bytes(for: request)
@@ -617,5 +713,109 @@ struct HistoryDrawer: View {
                 }
         )
         .accessibilityIdentifier("chat-history")
+    }
+}
+
+// MARK: Attachment views
+
+/// Attachments waiting to be sent: photo thumbnails or file chips, with upload progress and remove.
+struct PendingAttachmentsRow: View {
+    let attachments: [ChatAttachment]
+    let onRemove: (ChatAttachment) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(attachments) { attachment in
+                    ZStack(alignment: .topTrailing) {
+                        Group {
+                            if let thumbnail = attachment.thumbnail {
+                                Image(uiImage: thumbnail).resizable().scaledToFill().frame(width: 64, height: 64)
+                            } else {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "doc.text").font(.system(size: 14, weight: .semibold)).foregroundStyle(NS.muted)
+                                    Text(attachment.filename).font(NS.sans(13, .semibold)).lineLimit(1).frame(maxWidth: 150, alignment: .leading)
+                                }
+                                .padding(.horizontal, 10).frame(height: 64)
+                            }
+                        }
+                        .background(NS.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(alignment: .bottom) {
+                            if attachment.progress < 1 && attachment.error == nil {
+                                ProgressView(value: attachment.progress).tint(NS.ink).padding(.horizontal, 6).padding(.bottom, 4)
+                            }
+                        }
+                        .overlay {
+                            if attachment.error != nil {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(NS.stop, lineWidth: 2)
+                            }
+                        }
+                        Button { onRemove(attachment) } label: {
+                            Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                                .frame(width: 20, height: 20).background(Circle().fill(NS.ink.opacity(0.8)))
+                        }
+                        .padding(4)
+                        .accessibilityLabel("Remove \(attachment.filename)")
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("pending-attachment")
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+}
+
+/// Photos and files shown with a sent message.
+struct SentAttachmentsRow: View {
+    let attachments: [AIMessage.Attachment]
+    let thumbnails: [UIImage]
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Spacer(minLength: 40)
+            ForEach(Array(thumbnails.enumerated()), id: \.offset) { _, image in
+                Image(uiImage: image).resizable().scaledToFill().frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            ForEach(Array(attachments.filter { thumbnails.isEmpty || $0.kind != "image" }.enumerated()), id: \.offset) { _, attachment in
+                HStack(spacing: 6) {
+                    Image(systemName: attachment.kind == "image" ? "photo" : "doc.text").font(.system(size: 13, weight: .semibold)).foregroundStyle(NS.muted)
+                    Text(attachment.filename).font(NS.sans(13, .semibold)).lineLimit(1)
+                }
+                .padding(.horizontal, 10).frame(height: 36)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(NS.surface))
+            }
+        }
+    }
+}
+
+/// System camera for "Take Photo".
+struct CameraPicker: UIViewControllerRepresentable {
+    let onImage: (UIImage) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ controller: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraPicker
+        init(_ parent: CameraPicker) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let image = info[.originalImage] as? UIImage { parent.onImage(image) }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
     }
 }

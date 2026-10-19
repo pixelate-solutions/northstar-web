@@ -32,8 +32,8 @@ test("add, edit, move, and delete a stop", async ({ page }) => {
 
   // Add with a leading time.
   await page.getByRole("button", { name: "Add a stop" }).click();
-  await page.getByLabel("New stop").fill(`7:30p ${title}`);
-  await page.getByLabel("New stop").press("Enter");
+  await page.getByLabel("New stop", { exact: true }).fill(`7:30p ${title}`);
+  await page.getByLabel("New stop", { exact: true }).press("Enter");
   await expect(page.getByLabel("Stop name")).toHaveValue(title); // editor opens on the new stop
 
   // Edit fields inline.
@@ -332,3 +332,4 @@ test("writes go to the trip on screen even after another device opens a differen
   await page.request.delete(`/api/trips/${other.id}`);
   await page.request.get(`/api/trip?tripId=${tripId}`);
 });
+

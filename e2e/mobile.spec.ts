@@ -19,8 +19,8 @@ test("mobile: day strip, add a stop, lists tabs, Ask sheet", async ({ page }) =>
   // Add a stop on mobile.
   const title = `Mobile E2E ${Date.now().toString().slice(-5)}`;
   await page.getByRole("button", { name: "Add a stop" }).click();
-  await page.getByLabel("New stop").fill(title);
-  await page.getByLabel("New stop").press("Enter");
+  await page.getByLabel("New stop", { exact: true }).fill(title);
+  await page.getByLabel("New stop", { exact: true }).press("Enter");
   await expect(page.getByLabel("Stop name")).toHaveValue(title);
   await page.getByRole("button", { name: "Done" }).click();
   const created = (await (await page.request.get("/api/trip")).json()).days[1].events.find((e: { title: string }) => e.title === title);
