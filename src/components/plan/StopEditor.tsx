@@ -28,13 +28,11 @@ export function StopEditor({
   event,
   number,
   near,
-  showTime = true,
   onClose,
 }: {
   event: EventJson;
   number: number;
   near: { lat: number; lng: number } | null;
-  showTime?: boolean;
   onClose: () => void;
 }) {
   const { updateEvent, deleteEvent, bundle, canEdit } = useTrip();
@@ -89,7 +87,7 @@ export function StopEditor({
   return (
     <div className="my-1 flex flex-col gap-3.5 rounded-[16px] border-[1.5px] border-ink bg-white py-3.5 pl-3 pr-4 shadow-[0_8px_24px_rgba(17,17,16,0.08)]">
       <div className="flex items-center gap-3 sm:gap-3.5">
-        <span className={`shrink-0 ${timeColumnClass(use24Hour, showTime)}`} />
+        <span className={`shrink-0 ${timeColumnClass(use24Hour)}`} />
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-lane font-mono text-[12px] font-semibold">{number}</span>
         <input
           ref={titleRef}
@@ -110,7 +108,7 @@ export function StopEditor({
         </button>
       </div>
 
-      <div className={`flex flex-col gap-2.5 ${!showTime ? "sm:pl-[42px]" : use24Hour ? "sm:pl-[100px]" : "sm:pl-[124px]"}`}>
+      <div className={`flex flex-col gap-2.5 ${use24Hour ? "sm:pl-[100px]" : "sm:pl-[124px]"}`}>
         <div className="flex flex-wrap items-center gap-1.5">
           <label className={chip}>
             <Clock size={14} strokeWidth={2.2} />

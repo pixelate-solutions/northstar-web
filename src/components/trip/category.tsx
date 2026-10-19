@@ -9,7 +9,7 @@ export const CATEGORY_OPTIONS: Array<{ value: string; label: string; icon: Lucid
   { value: "flight", label: "Flight", icon: Plane, color: "#1C7DD6" },
   { value: "shopping", label: "Shop", icon: ShoppingBag, color: "#D6336B" },
   { value: "entertainment", label: "Fun", icon: Ticket, color: "#C27A00" },
-  { value: "other", label: "Other", icon: MapPin, color: "#878F97" },
+  { value: "other", label: "Other", icon: MapPin, color: "#454A52" },
 ];
 
 export function categoryMeta(value: string | null | undefined) {

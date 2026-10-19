@@ -95,14 +95,15 @@ final class NorthstarUITests: XCTestCase {
 
         // Edit it, then delete it.
         row.tap()
-        let done = app.buttons["Done"]
-        XCTAssertTrue(done.waitForExistence(timeout: 10))
+        let markBooked = app.buttons["Mark booked"]
+        XCTAssertTrue(markBooked.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Done"].exists, "No Done button; the sheet saves as you go")
         attach("stop-editor")
         XCTAssertFalse(app.textViews["Details"].exists || app.textFields["Details"].exists, "Only one notes field")
-        app.buttons["Mark booked"].tap()
+        markBooked.tap()
         XCTAssertTrue(app.buttons["Booked"].waitForExistence(timeout: 5))
-        done.tap()
-        sleep(1)
+        XCTAssertTrue(app.buttons["Booked"].isHittable && app.textFields["Cost"].isHittable, "All four tiles fit without scrolling")
+        closeSheet()
         XCTAssertFalse(app.buttons["Reorder"].exists, "Reorder button is gone; rows reorder by dragging")
         scrollAboveTabBar(row)
         row.swipeLeft()
@@ -187,6 +188,13 @@ final class NorthstarUITests: XCTestCase {
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
                 .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)))
         }
+    }
+
+    /// Swipe the presented sheet away (sheets save on close).
+    private func closeSheet() {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.52))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.99)))
+        sleep(1)
     }
 
     private func confirmDelete() {
@@ -327,6 +335,8 @@ final class NorthstarUITests: XCTestCase {
         XCTAssertLessThan(handle.frame.maxY, app.tabBars.firstMatch.frame.minY + 4, "Low drawer should sit above the tab bar")
 
         drag(to: 0.5)
+        attach("drawer-back-to-half")
+        // Releasing a drag over the day numbers must not select a different day.
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'DAY 2'")).firstMatch.isHittable)
     }
 
@@ -339,17 +349,114 @@ final class NorthstarUITests: XCTestCase {
         return (CGFloat(data[0]) / 255, CGFloat(data[1]) / 255, CGFloat(data[2]) / 255)
     }
 
-    /// Screenshot check for a day whose stops have no times (column collapses, add-stop circle lines up).
-    func testTimelessDayLayout() throws {
+    /// Rotating/zooming shows the compass under the profile picture and the scale under the trip menu,
+    /// not behind the status bar.
+    func testMapControlsPlacement() throws {
         signInIfNeeded()
-        app.buttons["Trips"].tap()
-        let trip = app.buttons["My First Trip"]
-        guard trip.waitForExistence(timeout: 5) else { throw XCTSkip("No 'My First Trip' on this account") }
-        trip.tap()
+        openTrip("France")
+        app.buttons.matching(identifier: "Day 2").firstMatch.tap()
         sleep(3)
-        app.buttons.matching(identifier: "Day 1").firstMatch.tap()
+        let map = app.maps.firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 10))
+        map.pinch(withScale: 1.8, velocity: 2)
+        map.rotate(1.2, withVelocity: 2)
+        attach("map-controls")
+        sleep(2)
+        attach("map-controls-later")
+        let account = app.buttons["Account"].frame
+        let compass = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] 'compass'")).firstMatch
+        if compass.exists {
+            XCTAssertGreaterThan(compass.frame.minY, account.maxY - 2, "Compass should sit below the profile picture")
+        }
+    }
+
+    /// The drawer moves from the list (below full height), from the day numbers (vertical only), and pulls down
+    /// from the list once it's scrolled to the top — like a native sheet.
+    func testDrawerGestures() throws {
+        signInIfNeeded()
+        app.buttons.matching(identifier: "Day 2").firstMatch.tap()
         sleep(3)
-        attach("timeless-day")
+        let handle = element("drawer-handle")
+        XCTAssertTrue(handle.waitForExistence(timeout: 5))
+        let height = app.frame.height
+        let half = handle.frame.minY
+        func drag(_ from: CGFloat, _ to: CGFloat, x: CGFloat = 0.5) {
+            app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: from))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: to)))
+            sleep(2)
+        }
+
+        // Swipe up on the list itself → full height.
+        drag(0.85, 0.35)
+        XCTAssertLessThan(handle.frame.minY, height * 0.2, "Swiping up on the list should open the drawer")
+        attach("gesture-list-up")
+
+        // At full height and scrolled to the top, pulling down on the list → drawer comes down.
+        drag(0.45, 0.9)
+        XCTAssertGreaterThan(handle.frame.minY, height * 0.35, "Pulling down on the list at its top should lower the drawer")
+        attach("gesture-list-down")
+
+        // Vertical drag on the day numbers moves the drawer…
+        let strip = app.buttons.matching(identifier: "Day 3").firstMatch
+        let stripY = strip.frame.midY / height
+        drag(stripY, 0.1, x: 0.6)
+        XCTAssertLessThan(handle.frame.minY, height * 0.2, "Dragging the day numbers up should open the drawer")
+        // …but a sideways swipe on them doesn't.
+        let before = handle.frame.minY
+        strip.swipeLeft()
+        sleep(1)
+        XCTAssertEqual(handle.frame.minY, before, accuracy: 4, "Sideways swipe through days must not move the drawer")
+        drag(strip.frame.midY / height, 0.55, x: 0.6)
+        XCTAssertEqual(handle.frame.minY, half, accuracy: 60)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'DAY 2'")).firstMatch.exists, "Dragging by the day numbers must not switch days")
+        XCTAssertFalse(app.buttons["Mark booked"].exists, "Dragging over a stop must not open it")
+        attach("gesture-strip")
+    }
+
+    /// "Open in Maps" shows the place card, not Apple Maps' "Change Stop" screen.
+    func testOpenInMaps() throws {
+        signInIfNeeded()
+        app.buttons.matching(identifier: "Day 2").firstMatch.tap()
+        sleep(2)
+        // Add a located stop through Apple Maps search (it gets the current time by default).
+        let addStop = app.buttons["Add a stop"]
+        for _ in 0..<6 where !addStop.isHittable { app.swipeUp(velocity: .slow) }
+        addStop.tap()
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.tap()
+        app.typeText("Eiffel Tower Paris")
+        let suggestion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Eiffel Tower'")).element(boundBy: 1)
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 15), "Apple Maps should suggest the Eiffel Tower")
+        suggestion.tap()
+        let stop = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Eiffel Tower'")).firstMatch
+        XCTAssertTrue(reveal(stop))
+        stop.tap()
+        let open = app.buttons["Open in Maps"]
+        XCTAssertTrue(open.waitForExistence(timeout: 8))
+        open.tap()
+        let maps = XCUIApplication(bundleIdentifier: "com.apple.Maps")
+        XCTAssertTrue(maps.wait(for: .runningForeground, timeout: 15))
+        for _ in 0..<5 {
+            sleep(2)
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            for target in [springboard, maps] {
+                for label in ["Allow While Using App", "Not Now", "Continue"] where target.buttons[label].firstMatch.exists { target.buttons[label].firstMatch.tap() }
+            }
+        }
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "open-in-maps"
+        shot.lifetime = .keepAlways
+        add(shot)
+        XCTAssertFalse(maps.staticTexts["Change Stop"].exists, "Maps should show the place, not Change Stop")
+        XCTAssertTrue(maps.buttons["Directions"].exists, "The place card offers Directions")
+        app.activate()
+
+        // Clean up the stop.
+        XCTAssertTrue(app.buttons["Delete"].waitForExistence(timeout: 10))
+        app.buttons["Delete"].firstMatch.tap()
+        confirmDelete()
+        XCTAssertTrue(stop.waitForNonExistence(timeout: 10))
     }
 
     func testEditProfileName() throws {
@@ -374,6 +481,19 @@ final class NorthstarUITests: XCTestCase {
         }
         rename(to: "QA")
         rename(to: "Tester")
+    }
+
+    /// Switches trips from the trip menu (menu items are matched loosely; names can contain "&").
+    private func openTrip(_ prefix: String) {
+        app.buttons["Trips"].tap()
+        let item = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@ AND elementType != %d", prefix, XCUIElement.ElementType.other.rawValue)).firstMatch
+        if item.waitForExistence(timeout: 5) {
+            item.tap()
+            sleep(3)
+        } else {
+            print("TRIP MENU:", app.descendants(matching: .any).allElementsBoundByIndex.prefix(80).map { "\($0.elementType.rawValue):\($0.label)" })
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)).tap()
+        }
     }
 
     private func attach(_ name: String) {

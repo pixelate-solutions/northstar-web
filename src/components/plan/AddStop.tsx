@@ -25,17 +25,7 @@ function nowClock() {
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
-export function AddStop({
-  dayId,
-  near,
-  showTime = true,
-  onAdded,
-}: {
-  dayId: number;
-  near: { lat: number; lng: number } | null;
-  showTime?: boolean;
-  onAdded?: (eventId: number) => void;
-}) {
+export function AddStop({ dayId, near, onAdded }: { dayId: number; near: { lat: number; lng: number } | null; onAdded?: (eventId: number) => void }) {
   const { addEvent } = useTrip();
   const [{ use24Hour }] = usePrefs();
   const [editing, setEditing] = useState(false);
@@ -66,7 +56,7 @@ export function AddStop({
         onClick={() => setEditing(true)}
         className="mt-1.5 flex h-[54px] w-full items-center gap-3 rounded-[12px] px-3 text-left transition hover:bg-surface sm:gap-3.5"
       >
-        <span className={`shrink-0 ${timeColumnClass(use24Hour, showTime)}`} />
+        <span className={`shrink-0 ${timeColumnClass(use24Hour)}`} />
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-[1.5px] border-dashed border-[#B9B9B4]">
           <Plus size={14} strokeWidth={2.4} />
         </span>

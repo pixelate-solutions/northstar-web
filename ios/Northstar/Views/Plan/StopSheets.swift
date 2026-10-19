@@ -29,7 +29,7 @@ struct StopEditorSheet: View {
     @State private var confirmDelete = false
     @State private var changingAddress = false
 
-    private static let chipHeight: CGFloat = 34
+    private static let tileHeight: CGFloat = 48
 
     private var current: Stop {
         store.day(id: stop.dayId)?.events.first { $0.id == stop.id } ?? stop
@@ -40,30 +40,36 @@ struct StopEditorSheet: View {
         let categoryColor = CategoryInfo.color(category)
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 12) {
-                    TextField("Stop name", text: $title)
-                        .font(NS.sans(24, .heavy))
-                        .disabled(readOnly)
-                        .onSubmit(saveTitle)
-                    Button("Done") { saveAll(); dismiss() }
-                        .font(NS.sans(15, .bold))
-                        .padding(.horizontal, 16).padding(.vertical, 9)
-                        .background(Capsule().fill(NS.lane))
-                        .foregroundStyle(NS.ink)
-                }
+                // Changes save as you go (and when the sheet closes), so there's no Done button.
+                TextField("Stop name", text: $title, axis: .vertical)
+                    .font(NS.sans(24, .heavy))
+                    .lineLimit(1...3)
+                    .disabled(readOnly)
+                    .submitLabel(.done)
+                    .onSubmit(saveTitle)
+                    .padding(.top, 6)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                // Time, category, cost and booked as a 2×2 grid: everything visible, nothing to scroll.
+                Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                    GridRow {
                         if hasTime {
-                            DatePicker("", selection: $time, displayedComponents: .hourAndMinute)
-                                .labelsHidden()
-                                .disabled(readOnly)
-                                .onChange(of: time) { _, _ in saveTime() }
-                                .frame(height: Self.chipHeight)
-                        } else if !readOnly {
-                            Button { hasTime = true; saveTime() } label: {
-                                chip { Label("Add time", systemImage: "clock") }
+                            tile {
+                                Image(systemName: "clock").font(.system(size: 14, weight: .semibold)).foregroundStyle(NS.muted)
+                                DatePicker("", selection: $time, displayedComponents: .hourAndMinute)
+                                    .labelsHidden()
+                                    .disabled(readOnly)
+                                    .onChange(of: time) { _, _ in saveTime() }
+                                Spacer(minLength: 0)
                             }
+                        } else {
+                            Button { hasTime = true; saveTime() } label: {
+                                tile {
+                                    Image(systemName: "clock").font(.system(size: 14, weight: .semibold))
+                                    Text("Add time")
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                            .disabled(readOnly)
                         }
                         Menu {
                             ForEach(CategoryInfo.all, id: \.value) { item in
@@ -72,21 +78,24 @@ struct StopEditorSheet: View {
                                 }
                             }
                         } label: {
-                            chip(fill: categoryColor.opacity(0.14), stroke: nil) {
-                                Label(CategoryInfo.info(category).label, systemImage: CategoryInfo.info(category).symbol)
-                                    .foregroundStyle(categoryColor)
+                            tile(fill: categoryColor.opacity(0.13)) {
+                                Image(systemName: CategoryInfo.info(category).symbol).font(.system(size: 14, weight: .bold))
+                                Text(CategoryInfo.info(category).label)
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .bold)).opacity(0.7)
                             }
+                            .foregroundStyle(categoryColor)
                         }
                         .disabled(readOnly)
-                        chip {
-                            HStack(spacing: 4) {
-                                Text("$").foregroundStyle(NS.muted)
-                                TextField("Cost", text: $cost)
-                                    .keyboardType(.decimalPad)
-                                    .frame(width: 60)
-                                    .disabled(readOnly)
-                            }
-                            .font(NS.mono(14))
+                        .accessibilityLabel("Category: \(CategoryInfo.info(category).label)")
+                    }
+                    GridRow {
+                        tile {
+                            Text("$").font(NS.mono(15, .semibold)).foregroundStyle(NS.muted)
+                            TextField("Cost", text: $cost)
+                                .keyboardType(.decimalPad)
+                                .font(NS.mono(15, .semibold))
+                                .disabled(readOnly)
                         }
                         Button {
                             booked.toggle()
@@ -94,22 +103,26 @@ struct StopEditorSheet: View {
                             save(["isBooked": .bool(value)]) { $0.isBooked = value }
                         } label: {
                             if booked {
-                                chip(fill: NS.go, stroke: nil) {
-                                    Label("Booked", systemImage: "checkmark").foregroundStyle(.white)
+                                tile(fill: NS.go) {
+                                    Image(systemName: "checkmark.circle.fill").font(.system(size: 15, weight: .bold))
+                                    Text("Booked")
+                                    Spacer(minLength: 0)
                                 }
+                                .foregroundStyle(.white)
                             } else {
-                                chip(fill: .white, stroke: NS.ink) {
-                                    Label("Mark booked", systemImage: "circle.dashed").foregroundStyle(NS.ink)
+                                tile(fill: .white, stroke: NS.ink) {
+                                    Image(systemName: "circle").font(.system(size: 15, weight: .bold))
+                                    Text("Mark booked")
+                                    Spacer(minLength: 0)
                                 }
+                                .foregroundStyle(NS.ink)
                             }
                         }
                         .disabled(readOnly)
+                        .accessibilityLabel(booked ? "Booked" : "Mark booked")
                     }
-                    .foregroundStyle(NS.ink)
-                    .padding(.horizontal, 20)
                 }
-                .fadedEdges(.horizontal, length: 20)
-                .padding(.horizontal, -20)
+                .foregroundStyle(NS.ink)
 
                 HStack(spacing: 8) {
                     Button { if !readOnly { changingAddress = true } } label: {
@@ -132,7 +145,7 @@ struct StopEditorSheet: View {
                                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(NS.lane))
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Directions in Maps")
+                        .accessibilityLabel("Open in Maps")
                     }
                 }
 
@@ -187,26 +200,29 @@ struct StopEditorSheet: View {
         }
     }
 
-    /// Apple Maps driving directions to the stop's coordinates, labelled with its name.
+    /// Opens the stop's place card in Apple Maps (with its Directions button). Asking Maps for driving directions
+    /// directly shows "Change Stop" whenever no driving route exists from where you are (e.g. Michigan → Paris).
     private var directionsURL: URL? {
         guard current.hasCoordinates, let lat = current.latitude, let lng = current.longitude else { return nil }
+        if #available(iOS 18.4, *) {
+            var components = URLComponents(string: "https://maps.apple.com/place")!
+            components.queryItems = [URLQueryItem(name: "coordinate", value: "\(lat),\(lng)"), URLQueryItem(name: "name", value: current.title)]
+            return components.url
+        }
         var components = URLComponents(string: "https://maps.apple.com/")!
-        components.queryItems = [
-            URLQueryItem(name: "daddr", value: "\(lat),\(lng)"),
-            URLQueryItem(name: "q", value: current.title),
-            URLQueryItem(name: "dirflg", value: "d"),
-        ]
+        components.queryItems = [URLQueryItem(name: "ll", value: "\(lat),\(lng)"), URLQueryItem(name: "q", value: current.title)]
         return components.url
     }
 
-    private func chip<Label: View>(fill: Color = NS.surface, stroke: Color? = nil, @ViewBuilder _ label: () -> Label) -> some View {
-        label()
-            .font(NS.sans(14, .semibold))
-            .labelStyle(ChipLabelStyle())
-            .padding(.horizontal, 12)
-            .frame(height: Self.chipHeight)
-            .background(Capsule().fill(fill))
-            .overlay { if let stroke { Capsule().strokeBorder(stroke, lineWidth: 1.5) } }
+    private func tile<Content: View>(fill: Color = NS.surface, stroke: Color? = nil, @ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 8) { content() }
+            .font(NS.sans(15, .semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: Self.tileHeight, maxHeight: Self.tileHeight, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(fill))
+            .overlay { if let stroke { RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(stroke, lineWidth: 1.5) } }
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func load() {
@@ -261,15 +277,6 @@ struct StopEditorSheet: View {
 }
 
 /// Apple Maps search used for adding stops and changing a stop's address.
-struct ChipLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 5) {
-            configuration.icon.font(.system(size: 12, weight: .bold))
-            configuration.title
-        }
-    }
-}
-
 struct PlacePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     let near: CLLocationCoordinate2D?

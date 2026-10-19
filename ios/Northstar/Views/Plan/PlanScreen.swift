@@ -18,6 +18,19 @@ struct PlanScreen: View {
     /// before the spring started. Here the reset happens inside the same animation that moves to the new detent.
     @State private var dragOffset: CGFloat = 0
     @GestureState private var isDragging = false
+    @GestureState private var isContentDragging = false
+    /// Decided once per gesture: does this drag move the drawer, or belong to what's under the finger?
+    @State private var handleDragMoves: Bool?
+    @State private var contentDragMoves: Bool?
+    /// A long press on a row (drag-to-reorder) must never move the drawer.
+    @State private var rowLongPressed = false
+    /// True while (and just after) the drawer is being dragged. The day numbers and rows move with the finger,
+    /// so lifting it would otherwise count as a tap on whatever ended up under it.
+    @State private var suppressTaps = false
+    /// Whether the list inside the drawer is scrolled to its top (so pulling down should move the drawer).
+    @State private var listAtTop = true
+    /// Shared with the map so the compass and scale can live in our overlay instead of under the status bar.
+    @Namespace private var mapScope
 
     private var selectedDay: Day? { selectedDayId.flatMap { store.day(id: $0) } }
 
@@ -38,6 +51,7 @@ struct PlanScreen: View {
                     highlighted: store.highlightedStopIds,
                     focusedLeg: focusedLeg,
                     camera: $camera,
+                    scope: mapScope,
                     onSelectStop: { editingStop = $0 }
                 )
                 .safeAreaPadding(.bottom, heights[.half]! - 24)
@@ -50,6 +64,7 @@ struct PlanScreen: View {
 
                 drawerView(height: height, settled: settled, heights: heights, bottomInset: geo.safeAreaInsets.bottom)
             }
+            .mapScope(mapScope)
             #if DEBUG
             .task { await runDrawerDemoIfRequested(heights: heights) }
             #endif
@@ -97,19 +112,27 @@ struct PlanScreen: View {
             // Drag handle region: grabber + day strip.
             VStack(spacing: 0) {
                 Capsule().fill(Color(white: 0.82)).frame(width: 36, height: 5).padding(.top, 8).padding(.bottom, 10)
-                DayStrip(days: store.days, selectedDayId: $selectedDayId)
+                DayStrip(days: store.days, selectedDayId: Binding(get: { selectedDayId }, set: { if !suppressTaps { selectedDayId = $0 } }))
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("drawer-handle")
-            .gesture(
+            .simultaneousGesture(
+                // Simultaneous so vertical drags work even on the sideways-scrolling day numbers; the first few
+                // points decide the axis, so swiping through days never moves the drawer.
                 // Measured in global space: the handle moves with the drawer, so local coordinates would feed back.
-                DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                DragGesture(minimumDistance: 6, coordinateSpace: .global)
                     .updating($isDragging) { _, state, _ in state = true }
-                    .onChanged { value in dragChanged(value.translation.height) }
+                    .onChanged { value in
+                        if handleDragMoves == nil { handleDragMoves = abs(value.translation.height) > abs(value.translation.width) }
+                        if handleDragMoves == true { suppressTaps = true; dragChanged(value.translation.height) }
+                    }
                     .onEnded { value in
-                        dragEnded(translation: value.translation.height, predicted: value.predictedEndTranslation.height, velocity: value.velocity.height, heights: heights)
+                        if handleDragMoves == true {
+                            dragEnded(translation: value.translation.height, predicted: value.predictedEndTranslation.height, velocity: value.velocity.height, heights: heights)
+                        }
+                        handleDragMoves = nil
                     }
             )
             .onTapGesture {
@@ -118,13 +141,45 @@ struct PlanScreen: View {
 
             Group {
                 if let day = selectedDay {
-                    DayContent(day: day, focusedLeg: $focusedLeg, onEditStop: { editingStop = $0 }, onAddStop: { addingStop = true }, onEditDay: { editingDay = day })
+                    DayContent(
+                        day: day,
+                        focusedLeg: $focusedLeg,
+                        onEditStop: { stop in if !suppressTaps { editingStop = stop } },
+                        onAddStop: { if !suppressTaps { addingStop = true } },
+                        onEditDay: { if !suppressTaps { editingDay = day } }
+                    )
                 } else {
-                    TripContent(onOpenDay: { selectedDayId = $0 }, onAsk: onAsk)
+                    TripContent(onOpenDay: { id in if !suppressTaps { selectedDayId = id } }, onAsk: onAsk)
                 }
             }
+            .environment(\.drawerTapsSuppressed, suppressTaps)
             // Room for the part of the drawer that's below the screen, so the last rows stay reachable.
             .safeAreaPadding(.bottom, max(0, full - settled))
+            // Like a native sheet: below full height, vertical drags on the list move the drawer (the list
+            // doesn't scroll); at full height, pulling down once the list is at its top moves the drawer.
+            .scrollDisabled(drawer != .full || contentDragMoves == true)
+            .modifier(ScrollTopTracker(atTop: $listAtTop))
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.3).onEnded { _ in rowLongPressed = true }
+            )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8, coordinateSpace: .global)
+                    .updating($isContentDragging) { _, state, _ in state = true }
+                    .onChanged { value in
+                        if contentDragMoves == nil {
+                            let vertical = abs(value.translation.height) > abs(value.translation.width) * 1.2
+                            contentDragMoves = vertical && !rowLongPressed && (drawer != .full || (value.translation.height > 0 && listAtTop))
+                        }
+                        if contentDragMoves == true { suppressTaps = true; dragChanged(value.translation.height) }
+                    }
+                    .onEnded { value in
+                        if contentDragMoves == true {
+                            dragEnded(translation: value.translation.height, predicted: value.predictedEndTranslation.height, velocity: value.velocity.height, heights: heights)
+                        }
+                        contentDragMoves = nil
+                        rowLongPressed = false
+                    }
+            )
             .opacity(height < heights[.peek]! + 40 ? 0 : 1)
             .animation(.easeOut(duration: 0.15), value: height < heights[.peek]! + 40)
         }
@@ -139,9 +194,13 @@ struct PlanScreen: View {
                 .shadow(color: .black.opacity(0.10), radius: 12, y: -4)
         }
         .offset(y: full - height)
-        .onChange(of: isDragging) { _, dragging in
+        .onChange(of: isDragging || isContentDragging) { _, dragging in
             // The system cancelled the gesture (no onEnded): settle wherever the drawer is closest to.
-            if !dragging && dragOffset != 0 { dragEnded(translation: dragOffset, predicted: dragOffset, velocity: 0, heights: heights) }
+            guard !dragging else { return }
+            handleDragMoves = nil
+            contentDragMoves = nil
+            rowLongPressed = false
+            if dragOffset != 0 { dragEnded(translation: dragOffset, predicted: dragOffset, velocity: 0, heights: heights) }
         }
     }
 
@@ -168,6 +227,13 @@ struct PlanScreen: View {
             drawer = next
             dragOffset = 0
         }
+        if suppressTaps {
+            // The lift that ends the drag delivers its tap right after; let that pass first.
+            Task {
+                try? await Task.sleep(for: .milliseconds(350))
+                suppressTaps = false
+            }
+        }
     }
 
     #if DEBUG
@@ -193,8 +259,13 @@ struct PlanScreen: View {
     #endif
 
     private var mapOverlay: some View {
-        HStack {
-            TripMenu(onNewTrip: { sheet = .newTrip }, onRename: { sheet = .rename }, onDates: { sheet = .dates }, onShare: { sheet = .share }, onDelete: { sheet = .deleteTrip }, onSwitched: { selectedDayId = nil })
+        HStack(alignment: .top) {
+            // Distance scale sits under the trip menu; it appears while zooming.
+            VStack(alignment: .leading, spacing: 10) {
+                TripMenu(onNewTrip: { sheet = .newTrip }, onRename: { sheet = .rename }, onDates: { sheet = .dates }, onShare: { sheet = .share }, onDelete: { sheet = .deleteTrip }, onSwitched: { selectedDayId = nil })
+                MapScaleView(scope: mapScope)
+                    .padding(.leading, 4)
+            }
             Spacer()
             if store.isOffline {
                 HStack(spacing: 5) {
@@ -208,13 +279,17 @@ struct PlanScreen: View {
                 .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
                 .accessibilityIdentifier("offline-pill")
             }
-            Button { sheet = .account } label: {
-                AvatarView(size: 36)
-                    .padding(2)
-                    .background(Circle().fill(.white))
-                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+            // Compass sits under the profile picture; it appears when the map is rotated (tap to reset north).
+            VStack(spacing: 10) {
+                Button { sheet = .account } label: {
+                    AvatarView(size: 36)
+                        .padding(2)
+                        .background(Circle().fill(.white))
+                        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                }
+                .accessibilityLabel("Account")
+                MapCompass(scope: mapScope)
             }
-            .accessibilityLabel("Account")
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
@@ -242,6 +317,7 @@ struct PlanMap: View {
     let highlighted: Set<Int>
     let focusedLeg: Int?
     @Binding var camera: MapCameraPosition
+    let scope: Namespace.ID
     let onSelectStop: (Stop) -> Void
     @State private var routes = RouteService.shared
 
@@ -279,7 +355,7 @@ struct PlanMap: View {
         let segments = zip(pts, pts.dropFirst()).map { a, b in
             Segment(id: a.id, line: routes.polyline(a.coordinate, b.coordinate), a: a.coordinate, b: b.coordinate)
         }
-        Map(position: $camera) {
+        Map(position: $camera, scope: scope) {
             ForEach(segments) { segment in
                 let focused = focusedLeg == nil || focusedLeg == segment.id
                 if let line = segment.line {
@@ -316,6 +392,7 @@ struct PlanMap: View {
             }
         }
         .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+        .mapControls {} // Compass and scale are placed in PlanScreen's overlay.
         .task(id: pts.map { "\($0.id)@\($0.coordinate.latitude),\($0.coordinate.longitude)" }.joined(separator: "|")) {
             routes.ensure(pts.map { ($0.id, $0.coordinate) })
         }
@@ -390,4 +467,26 @@ struct DayStrip: View {
         }
         .padding(.bottom, 12)
     }
+}
+
+/// Reports whether the scroll view below is at its top (iOS 18+; on iOS 17 the handle and day strip still drag).
+private struct ScrollTopTracker: ViewModifier {
+    @Binding var atTop: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y <= -geometry.contentInsets.top + 1
+            } action: { _, isAtTop in
+                atTop = isAtTop
+            }
+        } else {
+            content
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// True while a drawer drag is ending, so taps under the lifted finger are ignored.
+    @Entry var drawerTapsSuppressed = false
 }

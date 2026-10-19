@@ -116,7 +116,7 @@ extension CategoryInfo {
         case "flight": Color(red: 0.11, green: 0.49, blue: 0.84)
         case "shopping": Color(red: 0.84, green: 0.20, blue: 0.42)
         case "entertainment": Color(red: 0.86, green: 0.52, blue: 0.0)
-        default: Color(red: 0.53, green: 0.56, blue: 0.59)
+        default: Color(red: 0.27, green: 0.29, blue: 0.32)
         }
     }
 }

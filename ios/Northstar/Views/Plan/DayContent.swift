@@ -10,15 +10,13 @@ struct DayContent: View {
     let onEditDay: () -> Void
     @State private var routes = RouteService.shared
     @State private var pendingDelete: Stop?
+    @Environment(\.drawerTapsSuppressed) private var tapsSuppressed
     @AppStorage(Prefs.use24HourKey) private var use24Hour = false
 
     private var stops: [Stop] { TripStore.sortedStops(day.events) }
 
-    /// Width of the time column; none at all when no stop on the day has a time, so rows sit at the left edge.
-    private var timeWidth: CGFloat {
-        guard stops.contains(where: { $0.startTime != nil }) else { return 0 }
-        return use24Hour ? 40 : 58
-    }
+    /// Width of the time column, shared by stop rows, legs and the "Add a stop" row so the circles line up.
+    private var timeWidth: CGFloat { use24Hour ? 40 : 58 }
 
     private func coordinate(_ stop: Stop) -> CLLocationCoordinate2D? {
         guard stop.hasCoordinates, let lat = stop.latitude, let lng = stop.longitude else { return nil }
@@ -63,6 +61,7 @@ struct DayContent: View {
                             }
                         }
                     }
+                    .scrollDisabled(false) // stays swipeable even when the drawer locks list scrolling
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 8)
@@ -81,7 +80,7 @@ struct DayContent: View {
                             LegView(leg: leg, from: index + 1, focused: focusedLeg == stop.id, timeWidth: timeWidth)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    guard leg != nil else { return }
+                                    guard leg != nil, !tapsSuppressed else { return }
                                     withAnimation(.easeInOut(duration: 0.2)) { focusedLeg = focusedLeg == stop.id ? nil : stop.id }
                                 }
                         }
@@ -208,6 +207,7 @@ struct TripContent: View {
     @Environment(TripStore.self) private var store
     let onOpenDay: (Int) -> Void
     let onAsk: (AskDraft) -> Void
+    @Environment(\.drawerTapsSuppressed) private var tapsSuppressed
 
     var body: some View {
         let bundle = store.bundle
@@ -237,6 +237,7 @@ struct TripContent: View {
                     Spacer(minLength: 6)
                     if day.events.isEmpty && store.canEdit {
                         Button {
+                            guard !tapsSuppressed else { return }
                             onAsk(AskDraft(text: "Plan Day \(day.dayNumber) (\(Fmt.short(day.date)))\(day.location.isEmpty ? "" : " in \(day.location)") with specific places, times, and drive times.", autoSend: true))
                         } label: {
                             HStack(spacing: 5) {
