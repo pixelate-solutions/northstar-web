@@ -15,14 +15,19 @@ export async function GET(request: Request) {
     return context.error;
   }
 
-  if (Number.isInteger(requestedTripId) && requestedTripId > 0 && requestedTripId !== context.activeTrip.id) {
-    const switched = await setActiveTrip(context.appUser.id, requestedTripId);
-    if (!switched) {
-      return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+  if (Number.isInteger(requestedTripId) && requestedTripId > 0) {
+    if (requestedTripId !== context.appUser.activeTripId) {
+      const switched = await setActiveTrip(context.appUser.id, requestedTripId);
+      if (!switched) {
+        return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+      }
     }
-    context = await requireRouteTripContext();
+    context = await requireRouteTripContext({ tripId: requestedTripId });
     if ("error" in context) {
       return context.error;
+    }
+    if (context.activeTrip.id !== requestedTripId) {
+      return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
   }
 

@@ -5,23 +5,23 @@ import {
   toMessagePayload,
   type AiUploadedFile,
 } from "@/lib/ai/types";
+import {
+  addUploadPart,
+  classifyAttachment,
+  completeUpload,
+  createUpload,
+  MAX_FILE_BYTES,
+  MAX_FILES_PER_MESSAGE,
+  MAX_REQUEST_FILE_BYTES,
+  sanitizeFilename,
+  unseal,
+  type AttachmentRecord,
+} from "@/lib/ai/uploads";
 import { requireRouteTripContext } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
 // Multi-step planning turns (web search + many tool calls) can take a few minutes.
 export const maxDuration = 300;
-
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-const MAX_FILES_PER_MESSAGE = 6;
-const SUPPORTED_FILE_TYPES = new Set([
-  "application/pdf",
-  "text/plain",
-  "text/markdown",
-  "text/csv",
-  "application/json",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-]);
 
 function createAbortError() {
   const error = new Error("The operation was aborted.");
@@ -39,22 +39,6 @@ function chunkText(text: string, size = 120) {
     chunks.push(text.slice(index, index + size));
   }
   return chunks;
-}
-
-function sanitizeFilename(value: string) {
-  return value.replace(/[^\w.\- ()]/g, "_").slice(0, 160) || "upload";
-}
-
-function sanitizeMimeType(value: string) {
-  return value || "application/octet-stream";
-}
-
-function isSupportedUpload(file: File) {
-  if (SUPPORTED_FILE_TYPES.has(file.type)) {
-    return true;
-  }
-
-  return /\.(pdf|txt|md|markdown|csv|json|docx|xlsx)$/i.test(file.name);
 }
 
 async function parseChatRequest(request: Request) {
@@ -76,51 +60,50 @@ async function parseChatRequest(request: Request) {
       message,
       conversationId: Number.isFinite(conversationId) ? conversationId : null,
       files,
+      attachments: [] as unknown[],
     };
   }
 
   const payload = (await request.json().catch(() => null)) as
-    | { message?: string; conversationId?: number | null }
+    | { message?: string; conversationId?: number | null; attachments?: unknown[] }
     | null;
 
   return {
     message: payload?.message ?? "",
     conversationId: payload?.conversationId ?? null,
     files: [] as File[],
+    /** Signed references from /api/ai/uploads/complete. */
+    attachments: Array.isArray(payload?.attachments) ? payload.attachments : [],
   };
 }
 
+/** Verifies attachment references were issued to this user. */
+function attachmentsFromRefs(userId: number, refs: unknown[]): AiUploadedFile[] {
+  if (refs.length > MAX_FILES_PER_MESSAGE) throw new Error(`Attach up to ${MAX_FILES_PER_MESSAGE} files per message.`);
+  const files = refs.map((ref) => {
+    const record = unseal<AttachmentRecord>(userId, ref);
+    if (!record?.fileId) throw new Error("One of the attachments couldn't be verified. Attach it again.");
+    return { fileId: record.fileId, filename: record.filename, mimeType: record.mimeType, bytes: record.bytes, kind: record.kind };
+  });
+  if (files.reduce((sum, file) => sum + file.bytes, 0) > MAX_REQUEST_FILE_BYTES) throw new Error("Attachments can total up to 50 MB per message.");
+  return files;
+}
+
+/** Older clients send files inline (multipart); upload them the same way as chunked uploads. */
 async function filesToModelInputs(files: File[]): Promise<AiUploadedFile[]> {
-  if (!files.length) {
-    return [];
-  }
-
-  if (files.length > MAX_FILES_PER_MESSAGE) {
-    throw new Error(`Upload up to ${MAX_FILES_PER_MESSAGE} files per message.`);
-  }
-
+  if (files.length > MAX_FILES_PER_MESSAGE) throw new Error(`Attach up to ${MAX_FILES_PER_MESSAGE} files per message.`);
   const uploaded: AiUploadedFile[] = [];
   for (const file of files) {
-    if (file.size > MAX_UPLOAD_BYTES) {
-      throw new Error(`${file.name} is too large. Upload files up to 25 MB.`);
-    }
-
-    if (!isSupportedUpload(file)) {
-      throw new Error(`${file.name} is not a supported file type.`);
-    }
-
     const filename = sanitizeFilename(file.name);
-    const mimeType = sanitizeMimeType(file.type);
-    const buffer = Buffer.from(await file.arrayBuffer());
-
-    uploaded.push({
-      filename,
-      mimeType,
-      bytes: file.size,
-      fileData: `data:${mimeType};base64,${buffer.toString("base64")}`,
-    });
+    if (file.size > MAX_FILE_BYTES) throw new Error(`${filename} is too large. Files can be up to 50 MB.`);
+    const type = classifyAttachment(filename, file.type);
+    if (!type) throw new Error(`${filename} isn't a file type Northstar can read.`);
+    const upload = await createUpload({ filename, bytes: file.size, mimeType: type.mimeType, kind: type.kind });
+    const part = await addUploadPart(upload.id, file);
+    const done = await completeUpload(upload.id, [part.id]);
+    if (!done.file?.id) throw new Error(`Couldn't upload ${filename}.`);
+    uploaded.push({ fileId: done.file.id, filename, mimeType: type.mimeType, bytes: file.size, kind: type.kind });
   }
-
   return uploaded;
 }
 
@@ -133,7 +116,7 @@ export async function POST(request: Request) {
   const payload = await parseChatRequest(request);
 
   const message = payload?.message?.trim() ?? "";
-  if (!message && !payload.files.length) {
+  if (!message && !payload.files.length && !payload.attachments.length) {
     return Response.json({ error: "A message is required." }, { status: 400 });
   }
 
@@ -167,7 +150,10 @@ export async function POST(request: Request) {
       try {
         assertNotAborted();
         write({ type: "status", value: "thinking" });
-        const uploadedFiles = await filesToModelInputs(payload.files);
+        const uploadedFiles = [
+          ...attachmentsFromRefs(context.appUser.id, payload.attachments),
+          ...(await filesToModelInputs(payload.files)),
+        ];
 
         const result = await runAiTurn({
           appUser: context.appUser,

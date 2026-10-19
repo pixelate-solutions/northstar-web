@@ -27,6 +27,9 @@ struct StopEditorSheet: View {
     @State private var cost = ""
     @State private var booked = false
     @State private var notes = ""
+    /// Values as last loaded from the trip. Only fields the user changed are saved, so closing the sheet never
+    /// overwrites a collaborator's edit; fields the user hasn't touched follow live updates.
+    @State private var loaded = (title: "", cost: "", notes: "")
     @State private var confirmDelete = false
     @State private var changingAddress = false
 
@@ -190,6 +193,7 @@ struct StopEditorSheet: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .onAppear(perform: load)
+        .onChange(of: current) { _, updated in applyRemoteChanges(updated) }
         .onDisappear(perform: saveAll)
         .confirmationDialog("Delete \(current.title)?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
@@ -236,19 +240,38 @@ struct StopEditorSheet: View {
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
+    private static func costText(_ stop: Stop) -> String {
+        stop.costValue.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? String(Int($0)) : String($0) } ?? ""
+    }
+
+    /// One notes field: older stops may also carry text in `description`.
+    private static func notesText(_ stop: Stop) -> String {
+        var parts: [String] = []
+        for text in [stop.tip, stop.description].compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) }) where !text.isEmpty && !parts.contains(text) {
+            parts.append(text)
+        }
+        return parts.joined(separator: "\n\n")
+    }
+
     private func load() {
         let s = current
         title = s.title
         category = s.category
         booked = s.booked
-        cost = s.costValue.map { $0.truncatingRemainder(dividingBy: 1) == 0 ? String(Int($0)) : String($0) } ?? ""
-        // One notes field: older stops may also carry text in `description`.
-        var parts: [String] = []
-        for text in [s.tip, s.description].compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) }) where !text.isEmpty && !parts.contains(text) {
-            parts.append(text)
-        }
-        notes = parts.joined(separator: "\n\n")
+        cost = Self.costText(s)
+        notes = Self.notesText(s)
+        loaded = (title, cost, notes)
         if let t = Fmt.timeDate(s.startTime) { time = t; hasTime = true }
+    }
+
+    /// A collaborator changed this stop while the sheet is open: take their values for untouched fields.
+    private func applyRemoteChanges(_ s: Stop) {
+        if title == loaded.title { title = s.title }
+        if cost == loaded.cost { cost = Self.costText(s) }
+        if notes == loaded.notes { notes = Self.notesText(s) }
+        loaded = (s.title, Self.costText(s), Self.notesText(s))
+        category = s.category
+        booked = s.booked
     }
 
     private func save(_ patch: [String: JSON], apply: @escaping (inout Stop) -> Void) {
@@ -258,7 +281,8 @@ struct StopEditorSheet: View {
 
     private func saveTitle() {
         let next = title.trimmingCharacters(in: .whitespaces)
-        guard !next.isEmpty, next != current.title else { return }
+        guard !next.isEmpty, title != loaded.title, next != current.title else { return }
+        loaded.title = title
         save(["title": .string(next)]) { $0.title = next }
     }
 
@@ -271,14 +295,14 @@ struct StopEditorSheet: View {
     private func saveAll() {
         guard store.canEdit else { return }
         saveTitle()
-        let currentCost = current.costValue
         let nextCost = Double(cost)
-        if nextCost != currentCost {
+        if cost != loaded.cost, nextCost != current.costValue {
+            loaded.cost = cost
             save(["cost": nextCost.map { .number($0) } ?? .null]) { $0.cost = nextCost.map { String($0) } }
         }
         let value = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasDescription = !(current.description ?? "").isEmpty
-        if value != (current.tip ?? "") || hasDescription {
+        if notes != loaded.notes {
+            loaded.notes = notes
             save(["tip": value.isEmpty ? .null : .string(value), "description": .null]) {
                 $0.tip = value.isEmpty ? nil : value
                 $0.description = nil
@@ -325,13 +349,20 @@ struct PlacePickerSheet: View {
     }
 }
 
+/// New stop: a name, a location (Apple Maps search), and a time (defaults to now).
 struct AddStopSheet: View {
     @Environment(TripStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let day: Day
+    @State private var name = ""
     @State private var search = PlaceSearch()
+    @State private var place: ResolvedPlace?
+    @State private var resolving = false
     /// New stops default to the current time until it's changed.
     @State private var time = Date()
+    @FocusState private var focus: Field?
+
+    private enum Field { case name, location }
 
     private var center: CLLocationCoordinate2D? {
         let located = day.events.compactMap { s -> CLLocationCoordinate2D? in
@@ -342,25 +373,47 @@ struct AddStopSheet: View {
         return .init(latitude: located.map(\.latitude).reduce(0, +) / Double(located.count), longitude: located.map(\.longitude).reduce(0, +) / Double(located.count))
     }
 
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    DatePicker(selection: $time, displayedComponents: .hourAndMinute) { Text("Time").font(NS.sans(16, .semibold)) }
+            Form {
+                Section("Name") {
+                    TextField("What is it?", text: $name)
+                        .font(NS.sans(17, .semibold))
+                        .focused($focus, equals: .name)
+                        .submitLabel(.next)
+                        .onSubmit { focus = .location }
+                        .accessibilityIdentifier("new-stop-name")
                 }
-                if !search.query.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Section {
-                        Button { Task { await add(name: search.query.trimmingCharacters(in: .whitespaces), place: nil) } } label: {
-                            Label("Add \u{201C}\(search.query.trimmingCharacters(in: .whitespaces))\u{201D}", systemImage: "plus.circle")
-                                .font(NS.sans(16, .semibold))
+                Section("Location") {
+                    if let place {
+                        HStack(spacing: 10) {
+                            Image(systemName: "mappin.circle.fill").font(.system(size: 20)).foregroundStyle(NS.ink)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(place.name).font(NS.sans(16, .semibold))
+                                if !place.address.isEmpty { Text(place.address).font(NS.sans(13)).foregroundStyle(NS.muted) }
+                            }
+                            Spacer()
+                            Button { self.place = nil; focus = .location } label: {
+                                Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(NS.faint)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear location")
                         }
-                        ForEach(search.suggestions) { suggestion in
-                            Button {
-                                Task {
-                                    let place = await search.resolve(suggestion)
-                                    await add(name: place?.name ?? suggestion.title, place: place)
-                                }
-                            } label: {
+                    } else {
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass").foregroundStyle(NS.muted)
+                            TextField("Search Apple Maps", text: Binding(get: { search.query }, set: { search.query = $0 }))
+                                .focused($focus, equals: .location)
+                                .autocorrectionDisabled()
+                                .submitLabel(.search)
+                                .onSubmit { Task { await pick(await search.search(search.query)) } }
+                                .accessibilityIdentifier("new-stop-location")
+                            if resolving { ProgressView() }
+                        }
+                        ForEach(search.query.trimmingCharacters(in: .whitespaces).isEmpty ? [] : search.suggestions) { suggestion in
+                            Button { Task { await pick(await search.resolve(suggestion)) } } label: {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(suggestion.title).font(NS.sans(16, .semibold)).foregroundStyle(NS.ink)
                                     if !suggestion.subtitle.isEmpty { Text(suggestion.subtitle).font(NS.sans(13)).foregroundStyle(NS.muted) }
@@ -369,29 +422,53 @@ struct AddStopSheet: View {
                         }
                     }
                 }
+                Section {
+                    DatePicker(selection: $time, displayedComponents: .hourAndMinute) { Text("Time").font(NS.sans(16, .semibold)) }
+                }
             }
-            .searchable(text: Binding(get: { search.query }, set: { search.query = $0 }), placement: .navigationBarDrawer(displayMode: .always), prompt: "Search a place or type a stop")
-            .onSubmit(of: .search) {
-                let text = search.query.trimmingCharacters(in: .whitespaces)
-                Task { await add(name: text, place: await search.search(text)) }
-            }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Add a stop")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
-            .onAppear { search.bias(to: center) }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") { Task { await add() } }
+                        .bold()
+                        .disabled(trimmedName.isEmpty && place == nil)
+                }
+            }
+            .onAppear {
+                search.bias(to: center)
+                focus = .name
+            }
         }
         .tint(NS.ink)
     }
 
-    private func add(name: String, place: ResolvedPlace?) async {
-        guard !name.isEmpty else { return }
+    private func pick(_ resolved: ResolvedPlace?) async {
+        guard let resolved else { return }
+        place = resolved
+        if trimmedName.isEmpty { name = resolved.name }
+        search.query = ""
+        focus = nil
+    }
+
+    private func add() async {
+        // Text typed in the location field but not picked: look it up so the stop still lands on the map.
+        if place == nil, !search.query.trimmingCharacters(in: .whitespaces).isEmpty {
+            resolving = true
+            place = await search.search(search.query)
+            resolving = false
+        }
+        let title = trimmedName.isEmpty ? (place?.name ?? "") : trimmedName
+        guard !title.isEmpty else { return }
         dismiss()
         let address = place.map { $0.address.isEmpty ? $0.name : "\($0.name), \($0.address)" }
         await store.addStop(
             dayId: day.id,
-            title: name,
+            title: String(title.prefix(200)),
             startTime: Fmt.timeString(time),
-            category: CategoryInfo.guess("\(name) \(place?.address ?? "")"),
+            category: CategoryInfo.guess("\(title) \(place?.address ?? "")"),
             location: address,
             lat: place?.coordinate.latitude,
             lng: place?.coordinate.longitude

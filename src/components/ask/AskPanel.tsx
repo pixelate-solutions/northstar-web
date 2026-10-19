@@ -1,19 +1,86 @@
 "use client";
 
-import { ArrowUp, ChevronRight, CornerDownRight, Map as MapIcon, Menu, Paperclip, Search, Sparkle, SquarePen, Square, Undo2, Wrench, X } from "lucide-react";
+import { ArrowUp, ChevronRight, CornerDownRight, FileText, Map as MapIcon, Menu, Paperclip, Search, Sparkle, SquarePen, Square, Undo2, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { StarMark } from "@/components/brand/Logo";
 import { useTrip } from "@/components/trip/TripProvider";
-import { api } from "@/lib/api-client";
+import { api, tripHeaders } from "@/lib/api-client";
 import type { TripBundle } from "@/lib/client-types";
+import { ATTACHMENT_ACCEPT, isImage, MAX_ATTACHMENTS, uploadAttachment, type UploadedAttachment } from "@/lib/attachments";
 import { shortDate } from "@/lib/format";
 import type { AiCard, AiConversationSummary, AiMessagePayload } from "@/lib/ai/types";
 
 type Message = AiMessagePayload & { pending?: boolean };
 type Step = { kind: "thought" | "search" | "tool" | "result"; text: string };
 
+/** An attachment being uploaded (uploads start as soon as it's added). */
+interface PendingAttachment {
+  id: string;
+  file: File;
+  previewUrl: string | null;
+  progress: number;
+  error?: string;
+  upload: Promise<UploadedAttachment>;
+}
+
+interface MessageAttachment {
+  filename: string;
+  mimeType?: string;
+  kind?: "image" | "file";
+  previewUrl?: string | null;
+}
+
+function messageAttachments(message: Message): MessageAttachment[] {
+  const raw = (message.metadata as { attachments?: unknown } | null | undefined)?.attachments;
+  return Array.isArray(raw) ? (raw.filter((item) => item && typeof item === "object" && "filename" in item) as MessageAttachment[]) : [];
+}
+
+function AttachmentChips({ items, onRemove, align = "start" }: { items: Array<MessageAttachment & { id?: string; progress?: number; error?: string }>; onRemove?: (id: string) => void; align?: "start" | "end" }) {
+  return (
+    <div className={`flex flex-wrap gap-1.5 ${align === "end" ? "justify-end" : ""}`}>
+      {items.map((item, i) => {
+        const image = item.kind === "image" || item.mimeType?.startsWith("image/");
+        const uploading = item.progress !== undefined && item.progress < 1 && !item.error;
+        return (
+          <span
+            key={item.id ?? `${item.filename}-${i}`}
+            className={`relative flex items-center gap-2 overflow-hidden rounded-[12px] bg-surface text-[13px] font-semibold ${
+              image && item.previewUrl ? "h-16 w-16" : "h-10 max-w-[220px] pl-2.5 pr-2"
+            } ${item.error ? "ring-2 ring-stop" : ""}`}
+            title={item.error ?? item.filename}
+          >
+            {image && item.previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={item.previewUrl} alt={item.filename} className="h-full w-full object-cover" />
+            ) : (
+              <>
+                <FileText size={15} className="shrink-0 text-muted" />
+                <span className="truncate">{item.filename}</span>
+              </>
+            )}
+            {uploading ? (
+              <span className="absolute inset-x-0 bottom-0 h-1 bg-line">
+                <span className="block h-full bg-ink transition-all" style={{ width: `${Math.round((item.progress ?? 0) * 100)}%` }} />
+              </span>
+            ) : null}
+            {onRemove && item.id ? (
+              <button
+                type="button"
+                aria-label={`Remove ${item.filename}`}
+                onClick={() => onRemove(item.id!)}
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${image && item.previewUrl ? "absolute right-1 top-1 bg-ink/70 text-white" : "hover:bg-line"}`}
+              >
+                <X size={11} />
+              </button>
+            ) : null}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 const isFinePointer = () => typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches;
 
 function PulsingDot() {
@@ -192,7 +259,8 @@ export function AskPanel() {
   const setConversationId = setAskConversationId;
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [pending, setPending] = useState<PendingAttachment[]>([]);
+  const [dragging, setDragging] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -224,19 +292,26 @@ export function AskPanel() {
   }, [messages, bundle.days]);
 
   const send = useCallback(
-    async (raw: string, attachments: File[] = []) => {
+    async (raw: string, attachments: PendingAttachment[] = []) => {
       const message = raw.trim();
       if ((!message && !attachments.length) || running) return;
+      if (attachments.some((item) => item.error)) {
+        toast.error("Remove the attachment that failed, or attach it again.");
+        return;
+      }
       const before = bundleRef.current;
       setText("");
-      setFiles([]);
+      setPending([]);
       const optimisticUser: Message = {
         id: -Date.now(),
         role: "user",
-        content: message || attachments.map((f) => f.name).join(", "),
+        content: message,
         cards: [],
         followups: [],
         createdAt: new Date().toISOString(),
+        metadata: attachments.length
+          ? { attachments: attachments.map((item) => ({ filename: item.file.name, mimeType: item.file.type, kind: isImage(item.file) ? "image" : "file", previewUrl: item.previewUrl })) }
+          : null,
       };
       setMessages((list) => [...list, optimisticUser]);
       setStatus("Thinking");
@@ -245,19 +320,15 @@ export function AskPanel() {
       abortRef.current = controller;
 
       try {
-        let body: BodyInit;
-        const headers: Record<string, string> = {};
-        if (attachments.length) {
-          const form = new FormData();
-          form.set("message", message);
-          if (conversationId) form.set("conversationId", String(conversationId));
-          attachments.forEach((file) => form.append("files", file));
-          body = form;
-        } else {
-          headers["Content-Type"] = "application/json";
-          body = JSON.stringify({ message, conversationId });
-        }
-        const response = await fetch("/api/ai/chat", { method: "POST", body, headers, signal: controller.signal });
+        if (attachments.length) setStatus("Uploading");
+        const uploaded = await Promise.all(attachments.map((item) => item.upload));
+        setStatus("Thinking");
+        const response = await fetch("/api/ai/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...tripHeaders() },
+          body: JSON.stringify({ message, conversationId, attachments: uploaded.map((item) => item.ref) }),
+          signal: controller.signal,
+        });
         if (!response.ok || !response.body) {
           const data = (await response.json().catch(() => null)) as { error?: string } | null;
           throw new Error(data?.error ?? "Northstar couldn't respond.");
@@ -366,6 +437,29 @@ export function AskPanel() {
     }
   }
 
+  /** Adds files from the picker, paste or drop, and starts uploading them right away. */
+  const pendingCount = useRef(0);
+  pendingCount.current = pending.length;
+  const addFiles = useCallback((incoming: File[]) => {
+    if (!incoming.length) return;
+    const room = MAX_ATTACHMENTS - pendingCount.current;
+    if (incoming.length > room) toast.error(`Attach up to ${MAX_ATTACHMENTS} files per message.`);
+    const added = incoming.slice(0, Math.max(0, room)).map((file): PendingAttachment => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const upload = uploadAttachment(file, (progress) =>
+        setPending((list) => list.map((item) => (item.id === id ? { ...item, progress } : item)))
+      );
+      upload.catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "Upload failed.";
+        setPending((list) => list.map((item) => (item.id === id ? { ...item, error: message } : item)));
+        toast.error(message);
+      });
+      return { id, file, previewUrl: isImage(file) ? URL.createObjectURL(file) : null, progress: 0, upload };
+    });
+    pendingCount.current += added.length;
+    if (added.length) setPending((current) => [...current, ...added]);
+  }, []);
+
   function newChat() {
     abortRef.current?.abort();
     setHistoryOpen(false);
@@ -392,7 +486,28 @@ export function AskPanel() {
   }
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-white">
+    <div
+      className="relative flex h-full w-full flex-col overflow-hidden bg-white"
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer.files.length) return;
+        event.preventDefault();
+        setDragging(false);
+        addFiles(Array.from(event.dataTransfer.files));
+      }}
+    >
+      {dragging ? (
+        <div className="pointer-events-none absolute inset-3 z-30 flex items-center justify-center rounded-[22px] border-2 border-dashed border-ink bg-white/85 text-[17px] font-bold">
+          Drop to attach
+        </div>
+      ) : null}
       <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-3 pt-[max(env(safe-area-inset-top),16px)] lg:px-6 lg:pb-4 lg:pt-6">
         <div className="flex items-center gap-1.5">
           <button type="button" onClick={() => void openHistory()} aria-label="Chats" className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-surface">
@@ -473,11 +588,15 @@ export function AskPanel() {
         ) : null}
         {messages.map((message) => {
           if (message.role === "user") {
+            const attached = messageAttachments(message);
             return (
-              <div key={message.id} className="flex justify-end">
-                <div className="max-w-[440px] whitespace-pre-wrap rounded-[18px_18px_4px_18px] bg-surface px-4 py-3 text-[16px] font-medium leading-[23px]">
-                  {message.content}
-                </div>
+              <div key={message.id} className="flex flex-col items-end gap-1.5">
+                {attached.length ? <AttachmentChips items={attached} align="end" /> : null}
+                {message.content ? (
+                  <div className="max-w-[440px] whitespace-pre-wrap rounded-[18px_18px_4px_18px] bg-surface px-4 py-3 text-[16px] font-medium leading-[23px]">
+                    {message.content}
+                  </div>
+                ) : null}
               </div>
             );
           }
@@ -539,36 +658,38 @@ export function AskPanel() {
             ))}
           </div>
         ) : null}
-        {files.length ? (
-          <div className="flex flex-wrap gap-1.5">
-            {files.map((file) => (
-              <span key={file.name} className="flex items-center gap-1.5 rounded-full bg-surface py-1 pl-3 pr-1.5 text-[13px] font-semibold">
-                {file.name}
-                <button type="button" aria-label="Remove file" onClick={() => setFiles((list) => list.filter((f) => f !== file))} className="rounded-full p-0.5 hover:bg-line">
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
-          </div>
+        {pending.length ? (
+          <AttachmentChips
+            items={pending.map((item) => ({
+              id: item.id,
+              filename: item.file.name,
+              mimeType: item.file.type,
+              kind: isImage(item.file) ? "image" : "file",
+              previewUrl: item.previewUrl,
+              progress: item.progress,
+              error: item.error,
+            }))}
+            onRemove={(id) => setPending((list) => list.filter((item) => item.id !== id))}
+          />
         ) : null}
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            void send(text, files);
+            void send(text, pending);
           }}
           className="flex items-end gap-3 rounded-[28px] bg-ink py-2 pl-[18px] pr-2"
         >
-          <button type="button" aria-label="Attach files" onClick={() => fileRef.current?.click()} className="mb-[11px] text-[#A3A39E] hover:text-white">
+          <button type="button" aria-label="Attach files" title="Attach images or files" onClick={() => fileRef.current?.click()} className="mb-[11px] text-[#A3A39E] hover:text-white">
             <Paperclip size={18} />
           </button>
           <input
             ref={fileRef}
             type="file"
             multiple
-            accept=".pdf,.txt,.md,.csv,.json,.docx,.xlsx"
+            accept={ATTACHMENT_ACCEPT}
             className="hidden"
             onChange={(event) => {
-              setFiles((list) => [...list, ...Array.from(event.target.files ?? [])].slice(0, 6));
+              addFiles(Array.from(event.target.files ?? []));
               event.target.value = "";
             }}
           />
@@ -581,10 +702,17 @@ export function AskPanel() {
               event.target.style.height = "auto";
               event.target.style.height = `${Math.min(event.target.scrollHeight, 160)}px`;
             }}
+            onPaste={(event) => {
+              const pasted = Array.from(event.clipboardData.files);
+              if (!pasted.length) return;
+              // Pasting a copied image or file attaches it; plain text pastes as usual.
+              if (!event.clipboardData.getData("text/plain")) event.preventDefault();
+              addFiles(pasted);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
-                void send(text, files);
+                void send(text, pending);
               }
             }}
             placeholder="Ask Northstar"

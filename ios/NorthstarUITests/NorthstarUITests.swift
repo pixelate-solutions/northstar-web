@@ -83,13 +83,14 @@ final class NorthstarUITests: XCTestCase {
             app.swipeUp(velocity: .slow)
         }
         addStop.tap()
-        let search = app.searchFields.firstMatch
-        XCTAssertTrue(search.waitForExistence(timeout: 10))
-        search.tap()
-        app.typeText(name)
-        let addPlain = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
-        XCTAssertTrue(addPlain.waitForExistence(timeout: 10))
-        addPlain.tap()
+        // Name, location and time fields; a name alone is enough.
+        let nameField = app.textFields["new-stop-name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["new-stop-location"].exists, "Add a stop has a location field")
+        XCTAssertTrue(app.datePickers.firstMatch.exists, "Add a stop has a time")
+        attach("add-stop-sheet")
+        app.typeText(name) // the name field is focused
+        app.navigationBars.buttons["Add"].tap()
         let row = app.staticTexts[name]
         XCTAssertTrue(row.waitForExistence(timeout: 15), "New stop should appear in the day")
 
@@ -422,13 +423,16 @@ final class NorthstarUITests: XCTestCase {
         let addStop = app.buttons["Add a stop"]
         for _ in 0..<6 where !addStop.isHittable { app.swipeUp(velocity: .slow) }
         addStop.tap()
-        let search = app.searchFields.firstMatch
-        XCTAssertTrue(search.waitForExistence(timeout: 10))
-        search.tap()
+        let location = app.textFields["new-stop-location"]
+        XCTAssertTrue(location.waitForExistence(timeout: 10))
+        location.tap()
         app.typeText("Eiffel Tower Paris")
-        let suggestion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Eiffel Tower'")).element(boundBy: 1)
+        let suggestion = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Eiffel Tower'")).firstMatch
         XCTAssertTrue(suggestion.waitForExistence(timeout: 15), "Apple Maps should suggest the Eiffel Tower")
         suggestion.tap()
+        // Picking a place fills in the name.
+        XCTAssertTrue((app.textFields["new-stop-name"].value as? String)?.hasPrefix("Eiffel Tower") == true)
+        app.navigationBars.buttons["Add"].tap()
         let stop = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Eiffel Tower'")).firstMatch
         XCTAssertTrue(reveal(stop))
         stop.tap()
@@ -502,6 +506,19 @@ final class NorthstarUITests: XCTestCase {
         }
         closeSheet()
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'DAY '")).firstMatch.exists, "Should still be on the whole-trip view")
+    }
+
+    /// A collaborator's change (made through the API from another session) appears without relaunching.
+    /// Run with LIVE_STOP=<title>; the runner creates that stop once this test is waiting.
+    func testLiveCollaboratorUpdate() throws {
+        guard let title = ProcessInfo.processInfo.environment["LIVE_STOP"] else { throw XCTSkip("Set LIVE_STOP") }
+        signInIfNeeded()
+        app.buttons.matching(identifier: "Day 1").firstMatch.tap()
+        // Signal readiness for the runner, then wait for the remote stop.
+        print("LIVE_READY")
+        let row = app.staticTexts[title]
+        XCTAssertTrue(row.waitForExistence(timeout: 90), "Collaborator's new stop should appear live")
+        attach("live-update")
     }
 
     func testEditProfileName() throws {

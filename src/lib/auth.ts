@@ -125,7 +125,23 @@ export async function getCurrentAppUser() {
   return getOrCreateAppUser();
 }
 
-export async function getCurrentTripContext(): Promise<{
+/**
+ * Trip the request is about: an explicit id, else the `x-trip-id` header clients send for the trip they're
+ * showing, else the account's last-opened trip. (Without this, a phone switching trips would redirect a
+ * browser tab's edits to the phone's trip.)
+ */
+async function requestedTripId(explicit?: number) {
+  if (explicit && Number.isInteger(explicit)) return explicit;
+  try {
+    const { headers } = await import("next/headers");
+    const value = Number((await headers()).get("x-trip-id"));
+    return Number.isInteger(value) && value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getCurrentTripContext(options?: { tripId?: number }): Promise<{
   appUser: AppUser;
   trips: TripListItem[];
   activeTrip: TripListItem | null;
@@ -139,9 +155,13 @@ export async function getCurrentTripContext(): Promise<{
   }
 
   const userTrips = await listTripsForUser(appUser.id);
+  const wanted = await requestedTripId(options?.tripId);
 
   const activeTrip =
-    userTrips.find((trip) => trip.id === appUser.activeTripId) ?? userTrips[0] ?? null;
+    (wanted ? userTrips.find((trip) => trip.id === wanted) : undefined) ??
+    userTrips.find((trip) => trip.id === appUser.activeTripId) ??
+    userTrips[0] ??
+    null;
   const activeTripRole =
     activeTrip?.accessRole ?? (activeTrip ? await getTripRoleForUser(appUser.id, activeTrip.id) : null);
 

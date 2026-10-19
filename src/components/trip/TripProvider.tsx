@@ -1,10 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { api } from "@/lib/api-client";
+import { api, setCurrentTripId } from "@/lib/api-client";
 import type {
   DayJson,
   EventJson,
@@ -119,6 +119,11 @@ export function TripProvider({
     if (initialBundle.trip.id !== lastInitial.trip.id) setAskConversationId(null);
   }
 
+  // Every request names this trip (see api-client), so a phone switching trips can't redirect our edits.
+  useLayoutEffect(() => {
+    setCurrentTripId(bundle.trip.id);
+  }, [bundle.trip.id]);
+
   const canEdit = bundle.role !== "viewer";
   const isOwner = bundle.role === "owner";
 
@@ -141,10 +146,41 @@ export function TripProvider({
     return refreshing.current;
   }, []);
 
+  // Live updates: pick up collaborators' changes every few seconds while the tab is visible.
+  const inFlightWrites = useRef(0);
+  const serverVersion = useRef<{ tripId: number; version: string } | null>(null);
+  useEffect(() => {
+    const tripId = bundle.trip.id;
+    let stopped = false;
+    const check = async () => {
+      if (stopped || document.visibilityState !== "visible" || inFlightWrites.current > 0) return;
+      try {
+        const latest = await api<{ tripId: number; version: string }>("/api/trip/version");
+        if (latest.tripId !== tripId) return;
+        const previous = serverVersion.current;
+        serverVersion.current = { tripId, version: latest.version };
+        if (!previous || previous.tripId !== tripId || previous.version === latest.version) return;
+        const next = await api<TripBundle>("/api/trip");
+        if (!stopped && next.trip.id === tripId && inFlightWrites.current === 0) setBundle(next);
+      } catch {
+        // Offline or signed out; try again on the next tick.
+      }
+    };
+    const timer = window.setInterval(check, 4000);
+    const onVisible = () => void check();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [bundle.trip.id]);
+
   /** Runs an optimistic update; on failure shows the error and reloads the server truth. */
   const optimistic = useCallback(
     async <T,>(apply: (current: TripBundle) => TripBundle, request: () => Promise<T>, reconcile?: (result: T, current: TripBundle) => TripBundle) => {
       setBundle(apply);
+      inFlightWrites.current += 1;
       try {
         const result = await request();
         if (reconcile) setBundle((current) => reconcile(result, current));
@@ -153,6 +189,8 @@ export function TripProvider({
         toast.error(error instanceof Error ? error.message : "That didn't save.");
         await refresh();
         return null;
+      } finally {
+        inFlightWrites.current -= 1;
       }
     },
     [refresh]

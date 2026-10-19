@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 @Observable
 @MainActor
@@ -14,6 +15,11 @@ final class TripStore {
     private(set) var outbox: [PendingRequest] = OfflineStore.shared.outbox
     private var syncing = false
     private var saveTask: Task<Void, Never>?
+    /// Writes currently being sent; live refreshes wait so they can't overwrite an edit in flight.
+    private var inFlightWrites = 0
+    /// Last seen fingerprint of the trip on the server (see /api/trip/version).
+    private var serverVersion: (tripId: Int, version: String)?
+    private var liveTask: Task<Void, Never>?
     var userName = ""
     var isLoading = false
     var errorMessage: String?
@@ -30,6 +36,10 @@ final class TripStore {
         NotificationCenter.default.addObserver(forName: .northstarBackOnline, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.cameBackOnline() }
         }
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.checkForCollaboratorChanges() }
+        }
+        startLiveUpdates()
     }
 
     var canEdit: Bool { bundle.map { $0.role != .viewer } ?? false }
@@ -126,10 +136,41 @@ final class TripStore {
         if downloaded.trip.id == bundle?.trip.id && outbox.isEmpty { bundle = downloaded }
     }
 
+    // MARK: Live updates
+
+    /// Every few seconds while the app is open, picks up changes collaborators made (from any device).
+    private func startLiveUpdates() {
+        liveTask?.cancel()
+        liveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                guard let self else { return }
+                if UIApplication.shared.applicationState == .active { await self.checkForCollaboratorChanges() }
+            }
+        }
+    }
+
+    /// Reloads the trip if anything on the server changed since we last looked.
+    func checkForCollaboratorChanges() async {
+        guard let tripId = bundle?.trip.id, Connectivity.reachable, outbox.isEmpty, inFlightWrites == 0, !syncing else { return }
+        struct Version: Decodable { let tripId: Int; let version: String }
+        guard let latest: Version = try? await api.send("/api/trip/version", headers: ["x-trip-id": String(tripId)]),
+              latest.tripId == tripId else { return }
+        let previous = serverVersion
+        serverVersion = (tripId, latest.version)
+        guard let previous, previous.tripId == tripId, previous.version != latest.version else { return }
+        guard let fresh: TripBundle = try? await api.send("/api/trip", headers: ["x-trip-id": String(tripId)]),
+              // Skip if the user switched trips or started an edit while we were fetching.
+              fresh.trip.id == bundle?.trip.id, inFlightWrites == 0, outbox.isEmpty else { return }
+        bundle = fresh
+        isOffline = false
+    }
+
     // MARK: Offline
 
     private func bundleChanged() {
         guard let bundle else { return }
+        APIClient.shared.tripId = bundle.trip.id
         UserDefaults.standard.set(bundle.trip.id, forKey: "northstar.lastTripId")
         // Keep a copy while Offline mode is on, and always while offline edits are waiting to sync.
         guard Prefs.offlineMode || !outbox.isEmpty || isOffline else { return }
@@ -150,6 +191,8 @@ final class TripStore {
     @discardableResult
     private func perform(_ method: String, _ path: String, body: [String: JSON]? = nil, createsTempId: Int? = nil) async throws -> Data? {
         if outbox.isEmpty && !path.contains("{tmp:") {
+            inFlightWrites += 1
+            defer { inFlightWrites -= 1 }
             do {
                 return try await api.sendVoid(path, method: method, body: body)
             } catch where isOfflineError(error) {
@@ -197,12 +240,9 @@ final class TripStore {
                 continue
             }
             do {
-                // Writes apply to the server's active trip, so switch to the trip the change was made in.
-                if serverTrip != next.tripId {
-                    let _: TripBundle = try await api.send("/api/trip?tripId=\(next.tripId)")
-                    serverTrip = next.tripId
-                }
-                var request = try await api.request(path, method: next.method)
+                // Each change goes to the trip it was made in.
+                serverTrip = next.tripId
+                var request = try await api.request(path, method: next.method, headers: ["x-trip-id": String(next.tripId)])
                 if let body {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.httpBody = Data(body.utf8)
@@ -231,11 +271,11 @@ final class TripStore {
         let current = bundle?.trip.id
         if Prefs.offlineMode {
             for trip in touchedTrips where trip != current {
-                if let fresh: TripBundle = try? await api.send("/api/trip?tripId=\(trip)") { OfflineStore.shared.save(fresh) }
+                if let fresh: TripBundle = try? await api.send("/api/trip", headers: ["x-trip-id": String(trip)]) { OfflineStore.shared.save(fresh) }
             }
         }
-        if let current, serverTrip != nil, serverTrip != current || !touchedTrips.isEmpty {
-            if let fresh: TripBundle = try? await api.send("/api/trip?tripId=\(current)") { bundle = fresh }
+        if current != nil, serverTrip != nil, !touchedTrips.isEmpty {
+            if let fresh: TripBundle = try? await api.send("/api/trip") { bundle = fresh }
         }
         isOffline = false
     }

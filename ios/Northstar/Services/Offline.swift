@@ -187,7 +187,7 @@ final class OfflineDownloader {
             var bundles: [TripBundle] = []
             trips = (0, ordered.count)
             for (index, id) in ordered.enumerated() {
-                let bundle: TripBundle = try await api.send("/api/trip?tripId=\(id)")
+                let bundle: TripBundle = try await api.send("/api/trip", headers: ["x-trip-id": String(id)])
                 OfflineStore.shared.save(bundle)
                 bundles.append(bundle)
                 trips.done = index + 1

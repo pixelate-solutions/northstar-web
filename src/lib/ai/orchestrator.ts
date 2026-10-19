@@ -756,6 +756,7 @@ function getMessageAttachments(metadata: Record<string, unknown> | null | undefi
           ? attachment.mimeType
           : "application/octet-stream",
       bytes: typeof attachment.bytes === "number" ? attachment.bytes : 0,
+      kind: attachment.kind === "image" || (attachment.kind === undefined && String(attachment.mimeType).startsWith("image/")) ? "image" : "file",
     });
   }
 
@@ -765,12 +766,15 @@ function getMessageAttachments(metadata: Record<string, unknown> | null | undefi
 function collectConversationFiles(history: Awaited<ReturnType<typeof listAiMessages>>) {
   const seen = new Set<string>();
   const files: AiUploadedFile[] = [];
+  // OpenAI caps all files in one request at 50 MB; leave room for this turn's attachments.
+  let budget = 25 * 1024 * 1024;
 
   for (const message of [...history].reverse()) {
     for (const file of getMessageAttachments(message.metadata)) {
       const key = file.fileId ?? file.fileData;
-      if (!key || seen.has(key)) continue;
+      if (!key || seen.has(key) || file.bytes > budget) continue;
       seen.add(key);
+      budget -= file.bytes;
       files.push(file);
       if (files.length >= 8) {
         return files.reverse();
@@ -896,12 +900,18 @@ function buildUserInputWithGrounding(
           type: "input_text",
           text,
         },
-        ...files.map((file) => ({
-          type: "input_file",
-          filename: file.filename,
-          ...(file.fileId ? { file_id: file.fileId } : {}),
-          ...(file.fileData ? { file_data: file.fileData } : {}),
-        })),
+        ...files.map((file) =>
+          file.kind === "image"
+            ? {
+                type: "input_image",
+                detail: "auto",
+                ...(file.fileId ? { file_id: file.fileId } : { image_url: file.fileData }),
+              }
+            : {
+                type: "input_file",
+                ...(file.fileId ? { file_id: file.fileId } : { filename: file.filename, file_data: file.fileData }),
+              }
+        ),
       ],
     },
   ];
@@ -3333,6 +3343,7 @@ export async function runAiTurn(input: {
             filename: file.filename,
             mimeType: file.mimeType,
             bytes: file.bytes,
+            kind: file.kind,
           })),
         }
       : null,

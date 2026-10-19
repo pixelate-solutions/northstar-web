@@ -67,6 +67,8 @@ export interface AiUploadedFile {
   filename: string;
   mimeType: string;
   bytes: number;
+  /** Images go to the model as images; everything else as a document. */
+  kind?: "image" | "file";
 }
 
 

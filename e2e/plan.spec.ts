@@ -301,3 +301,34 @@ test("layout: whole day rows click, sidebar collapses, list/map resize, profile 
   await page.waitForTimeout(2500);
   await shot("map-zoomed");
 });
+
+test("writes go to the trip on screen even after another device opens a different trip", async ({ page }) => {
+  const original = await bundle(page);
+  const tripId = original.trip.id;
+  // Another device creates (and so opens) a different trip.
+  await page.request.post("/api/trips", { data: { name: `E2E other ${stamp}`, destination: "Lisbon", startDate: "2027-01-01", totalDays: 2 } });
+  const me = await (await page.request.get("/api/me")).json();
+  const other = me.trips.find((t: { name: string }) => t.name === `E2E other ${stamp}`);
+  expect(other).toBeTruthy();
+
+  // This screen still shows the original trip and names it in the header.
+  const title = `E2E header ${stamp}`;
+  const created = await (await page.request.post("/api/reminders", { data: { title }, headers: { "x-trip-id": String(tripId) } })).json();
+  const viaHeader = await (await page.request.get("/api/trip", { headers: { "x-trip-id": String(tripId) } })).json();
+  expect(viaHeader.trip.id).toBe(tripId);
+  expect(viaHeader.reminders.some((r: { id: number }) => r.id === created.id)).toBe(true);
+
+  // The version fingerprint changes when the trip changes.
+  const v1 = (await (await page.request.get("/api/trip/version", { headers: { "x-trip-id": String(tripId) } })).json()).version;
+  await page.request.delete(`/api/reminders/${created.id}`, { headers: { "x-trip-id": String(tripId) } });
+  const v2 = (await (await page.request.get("/api/trip/version", { headers: { "x-trip-id": String(tripId) } })).json()).version;
+  expect(v1).toBeTruthy();
+  expect(v2).not.toBe(v1);
+
+  // A trip the user can't access is ignored (falls back to their own).
+  const foreign = await (await page.request.get("/api/trip/version", { headers: { "x-trip-id": "999999" } })).json();
+  expect(foreign.tripId).not.toBe(999999);
+
+  await page.request.delete(`/api/trips/${other.id}`);
+  await page.request.get(`/api/trip?tripId=${tripId}`);
+});

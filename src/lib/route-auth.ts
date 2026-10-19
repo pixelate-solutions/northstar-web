@@ -13,6 +13,8 @@ const TRIP_ROLE_LEVELS: Record<TripAccessRole, number> = {
 
 export async function requireRouteTripContext(options?: {
   minimumRole?: TripAccessRole;
+  /** Use this trip (if the user can access it) instead of the x-trip-id header / last-opened trip. */
+  tripId?: number;
 }) {
   const db = getDb();
   if (!db) {
@@ -33,7 +35,7 @@ export async function requireRouteTripContext(options?: {
     };
   }
 
-  const context = await getCurrentTripContext();
+  const context = await getCurrentTripContext({ tripId: options?.tripId });
   if (!context) {
     return {
       error: NextResponse.json({ error: "Authentication required." }, { status: 401 }),

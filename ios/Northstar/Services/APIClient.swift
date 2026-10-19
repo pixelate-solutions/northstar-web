@@ -41,6 +41,9 @@ final class APIClient {
 
     /// Supplied by the auth layer; returns a fresh Clerk session JWT.
     var tokenProvider: () async throws -> String? = { nil }
+    /// The trip on screen. Sent as `x-trip-id` so reads and writes apply to it, even if another device
+    /// (or a browser tab) last opened a different trip on the same account.
+    var tripId: Int?
 
     private let decoder = JSONDecoder()
 
@@ -57,6 +60,7 @@ final class APIClient {
         if let token = try await tokenProvider() {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+        if let tripId { request.setValue(String(tripId), forHTTPHeaderField: "x-trip-id") }
         for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
