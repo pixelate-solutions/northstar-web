@@ -3344,6 +3344,7 @@ export async function runAiTurn(input: {
             mimeType: file.mimeType,
             bytes: file.bytes,
             kind: file.kind,
+            blobUrl: file.blobUrl,
           })),
         }
       : null,

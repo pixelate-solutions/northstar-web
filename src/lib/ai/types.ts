@@ -69,6 +69,8 @@ export interface AiUploadedFile {
   bytes: number;
   /** Images go to the model as images; everything else as a document. */
   kind?: "image" | "file";
+  /** Stored copy the chat can show; never sent to clients directly. */
+  blobUrl?: string;
 }
 
 
@@ -215,6 +217,18 @@ export function toConversationSummary(conversation: AiConversation): AiConversat
   };
 }
 
+/** Swaps stored copies for an authenticated viewing URL, so only the chat's owner can open them. */
+function withAttachmentUrls(messageId: number, metadata: Record<string, unknown> | null) {
+  if (!metadata || !Array.isArray(metadata.attachments)) return metadata;
+  const attachments = metadata.attachments.map((item, index) => {
+    if (!item || typeof item !== "object") return item;
+    const { blobUrl, ...rest } = item as Record<string, unknown>;
+    delete rest.fileId;
+    return blobUrl ? { ...rest, url: `/api/ai/attachments/${messageId}/${index}` } : rest;
+  });
+  return { ...metadata, attachments };
+}
+
 export function toMessagePayload(
   message: AiMessage & {
     cards: AiCard[];
@@ -228,7 +242,7 @@ export function toMessagePayload(
     content: message.content,
     cards: message.cards,
     followups: message.followups,
-    metadata: message.metadata ?? null,
+    metadata: withAttachmentUrls(message.id, message.metadata ?? null),
     createdAt: message.createdAt.toISOString(),
   };
 }

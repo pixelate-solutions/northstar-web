@@ -19,8 +19,9 @@ struct AskScreen: View {
     @State private var focused = false
     @State private var composerHeight: CGFloat = 44
     @State private var attachments: [ChatAttachment] = []
-    /// Thumbnails for photos sent this session (history only keeps file names).
-    @State private var sentThumbnails: [Int: [UIImage]] = [:]
+    /// Photos and files sent this session, so they open without downloading.
+    @State private var sentFiles: [Int: [ChatAttachment]] = [:]
+    @State private var viewing: Viewing?
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var choosingPhotos = false
     @State private var choosingFiles = false
@@ -51,16 +52,20 @@ struct AskScreen: View {
                             ForEach(messages) { message in
                                 if message.role == "user" {
                                     VStack(alignment: .trailing, spacing: 6) {
-                                        if let sent = message.metadata?.attachments, !sent.isEmpty {
-                                            SentAttachmentsRow(attachments: sent, thumbnails: sentThumbnails[message.id] ?? [])
+                                        let sent = ViewableAttachment.list(for: message, local: sentFiles[message.id] ?? [])
+                                        if !sent.isEmpty {
+                                            SentAttachmentsRow(items: sent, onOpen: { viewing = Viewing(items: sent, index: $0) }, onError: { store.errorMessage = $0 })
                                         }
                                         if !message.content.isEmpty {
                                             HStack {
                                                 Spacer(minLength: 40)
+                                                let bubble = UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 18, bottomTrailingRadius: 4, topTrailingRadius: 18)
                                                 Text(message.content)
                                                     .font(NS.sans(16, .medium))
                                                     .padding(.horizontal, 16).padding(.vertical, 12)
-                                                    .background(UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 18, bottomTrailingRadius: 4, topTrailingRadius: 18).fill(NS.surface))
+                                                    .background(bubble.fill(NS.surface))
+                                                    .contentShape(.contextMenuPreview, bubble)
+                                                    .contextMenu { CopyButton(text: message.content) }
                                             }
                                         }
                                     }
@@ -118,6 +123,9 @@ struct AskScreen: View {
                 messages = []
                 if let id = store.askConversationId { await open(id) }
             }
+        }
+        .fullScreenCover(item: $viewing) { viewing in
+            AttachmentViewer(items: viewing.items, index: viewing.index) { store.errorMessage = $0 }
         }
         .onAppear(perform: consumeDraft)
         .onChange(of: store.pendingAskDraft) { _, _ in consumeDraft() }
@@ -329,7 +337,7 @@ struct AskScreen: View {
         var metadata: AIMessage.Metadata?
         if !sending.isEmpty {
             metadata = AIMessage.Metadata(attachments: sending.map { .init(filename: $0.filename, mimeType: $0.mimeType, kind: $0.isImage ? "image" : "file") })
-            sentThumbnails[messageId] = sending.compactMap(\.thumbnail)
+            sentFiles[messageId] = sending
         }
         messages.append(AIMessage(id: messageId, role: "user", content: message, cards: [], followups: [], metadata: metadata))
         status = "Thinking"
@@ -488,9 +496,12 @@ struct AssistantMessageView: View {
                 ThoughtDisclosure(seconds: Int((ms / 1000).rounded()), steps: message.metadata?.steps ?? [])
             }
             if !message.content.isEmpty {
-                Text((try? AttributedString(markdown: message.content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(message.content))
+                let text = (try? AttributedString(markdown: message.content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(message.content)
+                Text(text)
                     .font(NS.sans(16, .medium))
                     .lineSpacing(3)
+                    .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .contextMenu { CopyButton(text: String(text.characters)) }
             }
             if !changes.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
@@ -767,27 +778,58 @@ struct PendingAttachmentsRow: View {
     }
 }
 
-/// Photos and files shown with a sent message.
+/// Photos and files shown with a sent message. Tap to open full screen; press and hold to save or share.
 struct SentAttachmentsRow: View {
-    let attachments: [AIMessage.Attachment]
-    let thumbnails: [UIImage]
+    let items: [ViewableAttachment]
+    let onOpen: (Int) -> Void
+    let onError: (String) -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
-            Spacer(minLength: 40)
-            ForEach(Array(thumbnails.enumerated()), id: \.offset) { _, image in
-                Image(uiImage: image).resizable().scaledToFill().frame(width: 72, height: 72)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            ForEach(Array(attachments.filter { thumbnails.isEmpty || $0.kind != "image" }.enumerated()), id: \.offset) { _, attachment in
-                HStack(spacing: 6) {
-                    Image(systemName: attachment.kind == "image" ? "photo" : "doc.text").font(.system(size: 13, weight: .semibold)).foregroundStyle(NS.muted)
-                    Text(attachment.filename).font(NS.sans(13, .semibold)).lineLimit(1)
-                }
-                .padding(.horizontal, 10).frame(height: 36)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(NS.surface))
-            }
+        // Fits on one line when it can; scrolls when there are many.
+        ViewThatFits(in: .horizontal) {
+            row
+            ScrollView(.horizontal, showsIndicators: false) { row }.defaultScrollAnchor(.trailing)
         }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.leading, 40)
+    }
+
+    private var row: some View {
+            HStack(spacing: 6) {
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                    Button { onOpen(index) } label: {
+                        if item.isImage && (item.thumbnail != nil || item.remotePath != nil) {
+                            AttachmentThumbnail(item: item, size: items.count == 1 ? 180 : 96, keepsShape: items.count == 1)
+                        } else {
+                            HStack(spacing: 6) {
+                                Image(systemName: item.isImage ? "photo" : "doc.text").font(.system(size: 13, weight: .semibold)).foregroundStyle(NS.muted)
+                                Text(item.filename).font(NS.sans(13, .semibold)).lineLimit(1)
+                            }
+                            .foregroundStyle(NS.ink)
+                            .padding(.horizontal, 10).frame(height: 36)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(NS.surface))
+                            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { AttachmentMenu(item: item, onError: onError) }
+                    .accessibilityLabel(item.filename)
+                    .accessibilityIdentifier("sent-attachment")
+                }
+            }
+    }
+}
+
+struct Viewing: Identifiable {
+    let id = UUID()
+    let items: [ViewableAttachment]
+    let index: Int
+}
+
+struct CopyButton: View {
+    let text: String
+    var body: some View {
+        Button { UIPasteboard.general.string = text } label: { Label("Copy", systemImage: "doc.on.doc") }
     }
 }
 

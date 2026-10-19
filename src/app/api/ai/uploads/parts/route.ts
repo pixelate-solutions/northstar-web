@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { addUploadPart, UPLOAD_PART_BYTES, unseal } from "@/lib/ai/uploads";
+import { addUploadPart, storePartCopy, UPLOAD_PART_BYTES, unseal } from "@/lib/ai/uploads";
 import { requireRouteTripContext } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
@@ -23,6 +23,7 @@ export async function POST(request: Request) {
 
   try {
     const part = await addUploadPart(upload.uploadId, data);
+    await storePartCopy(upload.uploadId, part.id, data);
     return NextResponse.json({ partId: part.id });
   } catch (error) {
     console.error("upload part failed", error);

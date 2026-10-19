@@ -40,6 +40,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save photos from your chats.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Take a photo to send to Northstar’s assistant.</string>
 	<key>NorthstarAPIBaseURL</key>

@@ -87,6 +87,56 @@ test("Ask reads attached images and files (picker, paste)", async ({ page }) => 
 
   await expect(page.getByText(new RegExp(word, "i")).last()).toBeVisible({ timeout: 150_000 });
   await expect(page.getByText(/red/i).last()).toBeVisible();
+
+  // Sent attachments open full screen: the photo, then the text file.
+  const viewer = page.getByRole("dialog");
+  await page.getByRole("button", { name: "Open red.png" }).click();
+  await expect(viewer.getByRole("img", { name: "red.png" })).toBeVisible();
+  await expect(viewer).toHaveCSS("background-color", "rgb(0, 0, 0)");
+  await viewer.getByRole("button", { name: "Previous" }).click();
+  await expect(viewer.getByText(`The secret code word is ${word}.`)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(viewer).toHaveCount(0);
+
+  // After a reload they come from the server's copy, which only this user can open.
+  await page.reload();
+  await page.getByRole("button", { name: "Send" }).first().click();
+  await page.getByRole("button", { name: "Chats" }).click();
+  await page.getByRole("button", { name: /^Two questions, no tools needed/ }).first().click();
+  const photo = page.getByRole("button", { name: "Open red.png" });
+  await expect(photo).toBeVisible();
+  await expect.poll(() => photo.locator("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(64);
+  await page.getByRole("button", { name: "Open notes.txt" }).click();
+  await expect(viewer.getByText(`The secret code word is ${word}.`)).toBeVisible();
+  const href = await viewer.getByRole("link", { name: "Download" }).getAttribute("href");
+  expect(href).toMatch(/^\/api\/ai\/attachments\/\d+\/0\?download=1$/);
+  const download = await page.request.get(href!, { maxRedirects: 0 });
+  expect(download.status()).toBe(307);
+  expect(download.headers().location).toContain("download=1");
+  await viewer.getByRole("button", { name: "Close" }).click();
+  await expect(viewer).toHaveCount(0);
+  const signedOut = await fetch(new URL(href!, page.url()), { redirect: "manual" });
+  expect(signedOut.status).not.toBe(307);
+});
+
+test("chat messages can be copied", async ({ page, context, isMobile }) => {
+  test.skip(isMobile, "phones use press-and-hold text selection");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await signIn(page);
+  await page.goto("/app");
+  await page.getByRole("button", { name: "Send" }).first().click();
+  const input = page.getByPlaceholder("Ask Northstar").last();
+  await input.fill("Reply with exactly the word PELICAN and nothing else. No tools.");
+  await input.press("Enter");
+  await expect(page.getByText(/^PELICAN\.?$/).last()).toBeVisible({ timeout: 120_000 });
+  const reply = page.getByText(/^PELICAN\.?$/).last().locator("xpath=ancestor::div[contains(@class,'group')][1]");
+  await reply.hover();
+  await reply.getByRole("button", { name: "Copy" }).click();
+  expect((await page.evaluate(() => navigator.clipboard.readText())).trim()).toMatch(/^PELICAN\.?$/);
+  const mine = page.getByText("Reply with exactly the word PELICAN", { exact: false }).last().locator("xpath=ancestor::div[contains(@class,'group')][1]");
+  await mine.hover();
+  await mine.getByRole("button", { name: "Copy" }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("Reply with exactly the word PELICAN");
 });
 
 test("large attachments upload in parts; other users' references are rejected", async ({ page }) => {

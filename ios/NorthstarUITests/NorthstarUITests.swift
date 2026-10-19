@@ -559,6 +559,56 @@ final class NorthstarUITests: XCTestCase {
         XCTAssertTrue(answer.waitForExistence(timeout: 150), "Assistant should describe the pasted photo")
         attach("ask-photo-answer")
         XCTAssertTrue(app.buttons["ask-attach"].exists, "Attach menu is available")
+
+        // Press and hold the answer to copy it, then paste it into the message box.
+        answer.press(forDuration: 1.0)
+        let copy = app.buttons["Copy"].exists ? app.buttons["Copy"] : app.collectionViews.buttons["Copy"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy should be offered on a reply")
+        attach("ask-copy-menu")
+        copy.tap()
+        input.tap()
+        input.press(forDuration: 1.1)
+        XCTAssertTrue(app.menuItems["Paste"].waitForExistence(timeout: 5))
+        app.menuItems["Paste"].tap()
+        let pasted = NSPredicate(format: "value CONTAINS[c] 'PINEAPPLE'")
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: pasted, evaluatedWith: input)], timeout: 5), .completed, "Copied reply should paste")
+        input.press(forDuration: 1.1)
+        if app.menuItems["Select All"].waitForExistence(timeout: 3) { app.menuItems["Select All"].tap() }
+        input.typeText(XCUIKeyboardKey.delete.rawValue)
+
+        // Tap the sent photo to open it full screen; press and hold offers Save to Photos.
+        openSentPhotoAndClose(saving: true)
+
+        // Reopen the chat from the list: the photo now comes from the server's copy.
+        app.buttons["Chats"].tap()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Without using any tools'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        XCTAssertTrue(answer.waitForExistence(timeout: 15))
+        openSentPhotoAndClose(saving: false)
+    }
+
+    private func openSentPhotoAndClose(saving: Bool) {
+        let photo = app.buttons.matching(identifier: "sent-attachment").firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 10))
+        photo.tap()
+        let image = element("viewer-image")
+        XCTAssertTrue(image.waitForExistence(timeout: 20), "Photo should open full screen")
+        attach(saving ? "viewer-local" : "viewer-server")
+        if saving {
+            image.press(forDuration: 1.0)
+            let save = app.buttons["Save to Photos"]
+            XCTAssertTrue(save.waitForExistence(timeout: 5), "Save to Photos should be offered")
+            attach("viewer-menu")
+            save.tap()
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            let allow = springboard.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Allow'")).firstMatch
+            if allow.waitForExistence(timeout: 4) { allow.tap() }
+        }
+        let close = app.buttons["viewer-close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5), "Viewer should close")
     }
 
     func testEditProfileName() throws {

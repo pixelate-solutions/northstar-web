@@ -83,7 +83,7 @@ function attachmentsFromRefs(userId: number, refs: unknown[]): AiUploadedFile[] 
   const files = refs.map((ref) => {
     const record = unseal<AttachmentRecord>(userId, ref);
     if (!record?.fileId) throw new Error("One of the attachments couldn't be verified. Attach it again.");
-    return { fileId: record.fileId, filename: record.filename, mimeType: record.mimeType, bytes: record.bytes, kind: record.kind };
+    return { fileId: record.fileId, filename: record.filename, mimeType: record.mimeType, bytes: record.bytes, kind: record.kind, blobUrl: record.blobUrl };
   });
   if (files.reduce((sum, file) => sum + file.bytes, 0) > MAX_REQUEST_FILE_BYTES) throw new Error("Attachments can total up to 50 MB per message.");
   return files;

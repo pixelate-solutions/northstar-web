@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowUp, ChevronRight, CornerDownRight, FileText, Map as MapIcon, Menu, Paperclip, Search, Sparkle, SquarePen, Square, Undo2, Wrench, X } from "lucide-react";
+import { ArrowUp, Check, ChevronRight, Copy, CornerDownRight, FileText, Map as MapIcon, Menu, Paperclip, Search, Sparkle, SquarePen, Square, Undo2, Wrench, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { AttachmentViewer, type ViewerItem } from "@/components/ask/AttachmentViewer";
 import { StarMark } from "@/components/brand/Logo";
 import { useTrip } from "@/components/trip/TripProvider";
 import { api, tripHeaders } from "@/lib/api-client";
@@ -30,6 +31,10 @@ interface MessageAttachment {
   mimeType?: string;
   kind?: "image" | "file";
   previewUrl?: string | null;
+  /** Server copy (history). */
+  url?: string;
+  /** This browser's copy of a file just sent. */
+  localUrl?: string;
 }
 
 function messageAttachments(message: Message): MessageAttachment[] {
@@ -81,6 +86,69 @@ function AttachmentChips({ items, onRemove, align = "start" }: { items: Array<Me
     </div>
   );
 }
+function toViewerItem(item: MessageAttachment): ViewerItem {
+  const src = item.localUrl ?? item.url;
+  return { filename: item.filename, mimeType: item.mimeType, kind: item.kind, src, downloadHref: item.url && !item.localUrl ? `${item.url}?download=1` : undefined };
+}
+
+/** Photos and files on a sent message. Click opens them full screen. */
+function SentAttachments({ items, onOpen }: { items: MessageAttachment[]; onOpen: (index: number) => void }) {
+  return (
+    <div className="flex max-w-full flex-wrap justify-end gap-1.5 pl-10">
+      {items.map((item, i) => {
+        const thumb = (item.kind === "image" || item.mimeType?.startsWith("image/")) && (item.previewUrl ?? item.url);
+        return (
+          <button
+            key={`${item.filename}-${i}`}
+            type="button"
+            onClick={() => onOpen(i)}
+            title={item.filename}
+            aria-label={`Open ${item.filename}`}
+            className={`flex items-center gap-2 overflow-hidden rounded-[14px] bg-surface text-[13px] font-semibold transition hover:opacity-90 ${
+              thumb ? (items.length === 1 ? "h-44 w-44" : "h-24 w-24") : "h-10 max-w-[220px] pl-2.5 pr-3"
+            }`}
+          >
+            {thumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={thumb} alt={item.filename} className="h-full w-full object-cover" />
+            ) : (
+              <>
+                <FileText size={15} className="shrink-0 text-muted" />
+                <span className="truncate">{item.filename}</span>
+              </>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Appears on hover with a mouse; on phones, press and hold selects text as usual. */
+function CopyButton({ text, align = "start" }: { text: string; align?: "start" | "end" }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label="Copy"
+      title="Copy"
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+      className={`flex h-7 w-7 items-center justify-center rounded-full text-muted opacity-0 transition hover:bg-surface hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 ${align === "end" ? "self-end" : "self-start"} ${copied ? "opacity-100" : ""}`}
+    >
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+    </button>
+  );
+}
+
+function plainText(text: string) {
+  return text.replaceAll("**", "");
+}
+
 const isFinePointer = () => typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches;
 
 function PulsingDot() {
@@ -266,6 +334,8 @@ export function AskPanel() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [conversations, setConversations] = useState<AiConversationSummary[]>([]);
   const [undoing, setUndoing] = useState<number | null>(null);
+  const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number } | null>(null);
+  const closeViewer = useCallback(() => setViewer(null), []);
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -310,7 +380,13 @@ export function AskPanel() {
         followups: [],
         createdAt: new Date().toISOString(),
         metadata: attachments.length
-          ? { attachments: attachments.map((item) => ({ filename: item.file.name, mimeType: item.file.type, kind: isImage(item.file) ? "image" : "file", previewUrl: item.previewUrl })) }
+          ? { attachments: attachments.map((item) => ({
+                filename: item.file.name,
+                mimeType: item.file.type,
+                kind: isImage(item.file) ? "image" : "file",
+                previewUrl: item.previewUrl,
+                localUrl: item.previewUrl ?? URL.createObjectURL(item.file),
+              })) }
           : null,
       };
       setMessages((list) => [...list, optimisticUser]);
@@ -590,12 +666,15 @@ export function AskPanel() {
           if (message.role === "user") {
             const attached = messageAttachments(message);
             return (
-              <div key={message.id} className="flex flex-col items-end gap-1.5">
-                {attached.length ? <AttachmentChips items={attached} align="end" /> : null}
+              <div key={message.id} className="group flex flex-col items-end gap-1.5">
+                {attached.length ? <SentAttachments items={attached} onOpen={(index) => setViewer({ items: attached.map(toViewerItem), index })} /> : null}
                 {message.content ? (
-                  <div className="max-w-[440px] whitespace-pre-wrap rounded-[18px_18px_4px_18px] bg-surface px-4 py-3 text-[16px] font-medium leading-[23px]">
-                    {message.content}
-                  </div>
+                  <>
+                    <div className="max-w-[440px] whitespace-pre-wrap rounded-[18px_18px_4px_18px] bg-surface px-4 py-3 text-[16px] font-medium leading-[23px]">
+                      {message.content}
+                    </div>
+                    <CopyButton text={message.content} align="end" />
+                  </>
                 ) : null}
               </div>
             );
@@ -609,9 +688,10 @@ export function AskPanel() {
             thoughtMs?: number;
           };
           return (
-            <div key={message.id} className="flex flex-col gap-3.5">
+            <div key={message.id} className="group flex flex-col gap-3.5">
               {typeof metadata.thoughtMs === "number" ? <ThoughtFor ms={metadata.thoughtMs} steps={metadata.steps ?? []} /> : null}
               {message.content ? <RichText text={message.content} /> : null}
+              {message.content && !message.pending ? <div className="-mt-2.5"><CopyButton text={plainText(message.content)} /></div> : null}
               {mutations.length ? (
                 <ChangesCard
                   cards={mutations}
@@ -642,6 +722,7 @@ export function AskPanel() {
         })}
         {running ? <Thinking steps={steps} /> : null}
       </div>
+      {viewer ? <AttachmentViewer items={viewer.items} index={viewer.index} onClose={closeViewer} /> : null}
 
       <div className="flex shrink-0 flex-col gap-2.5 px-3 pb-[max(env(safe-area-inset-bottom),16px)] pt-3 lg:px-6 lg:pb-6">
         {!running ? (

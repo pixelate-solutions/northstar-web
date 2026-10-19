@@ -137,7 +137,7 @@ struct AICard: Codable, Hashable {
 struct AIMessage: Codable, Identifiable, Hashable {
     struct Source: Codable, Hashable { let url: String; let title: String }
     struct Step: Codable, Hashable { let kind: String; let text: String }
-    struct Attachment: Codable, Hashable { let filename: String; var mimeType: String?; var kind: String? }
+    struct Attachment: Codable, Hashable { let filename: String; var mimeType: String?; var kind: String?; var url: String? }
     struct Metadata: Codable, Hashable {
         var undoable: Bool?
         var undoApplied: Bool?

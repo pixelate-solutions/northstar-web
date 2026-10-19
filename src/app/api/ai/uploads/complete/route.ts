@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { completeUpload, seal, unseal, type AttachmentKind, type AttachmentRecord } from "@/lib/ai/uploads";
+import { assembleCopy, completeUpload, seal, unseal, type AttachmentKind, type AttachmentRecord } from "@/lib/ai/uploads";
 import { requireRouteTripContext } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
@@ -34,8 +34,9 @@ export async function POST(request: Request) {
       mimeType: upload.mimeType,
       bytes: upload.bytes,
       kind: upload.kind,
+      blobUrl: await assembleCopy(context.appUser.id, upload.uploadId, partIds, upload.filename, upload.mimeType),
     };
-    return NextResponse.json({ ...record, ref: seal(context.appUser.id, record) });
+    return NextResponse.json({ ...record, blobUrl: undefined, ref: seal(context.appUser.id, record) });
   } catch (error) {
     console.error("upload complete failed", error);
     return NextResponse.json({ error: "Couldn't finish the upload. Try again." }, { status: 502 });

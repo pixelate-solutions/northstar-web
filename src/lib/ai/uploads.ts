@@ -2,6 +2,8 @@ import "server-only";
 
 import crypto from "node:crypto";
 
+import { del, head, put } from "@vercel/blob";
+
 /**
  * Chat attachments. Files are streamed to OpenAI's multipart Uploads API in parts small enough for Vercel's
  * request limit, then referenced by file id. Ids are handed to clients with an HMAC so a user can only attach
@@ -93,6 +95,8 @@ export interface AttachmentRecord {
   mimeType: string;
   bytes: number;
   kind: AttachmentKind;
+  /** Our own copy for viewing in the chat (OpenAI won't hand user_data files back). */
+  blobUrl?: string;
 }
 
 /** Signs a small JSON payload for one user: `<base64url json>.<hmac>`. */
@@ -162,4 +166,44 @@ export function completeUpload(uploadId: string, partIds: string[]) {
       body: JSON.stringify({ part_ids: partIds }),
     }
   );
+}
+
+// --- Viewable copies (Vercel Blob) ----------------------------------------------------------------
+
+/** Best-effort: a missing Blob store or a failed copy leaves the upload working, just not viewable. */
+function blobConfigured() {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+}
+
+const partPath = (uploadId: string, partId: string) => `chat-uploads/${uploadId}/${partId}`;
+
+export async function storePartCopy(uploadId: string, partId: string, data: Blob) {
+  if (!blobConfigured()) return;
+  try {
+    await put(partPath(uploadId, partId), data, { access: "public", addRandomSuffix: false, allowOverwrite: true });
+  } catch (error) {
+    console.error("attachment copy failed", error);
+  }
+}
+
+/** Joins the stored parts into one file and returns its URL, or undefined if any part is missing. */
+export async function assembleCopy(userId: number, uploadId: string, partIds: string[], filename: string, mimeType: string) {
+  if (!blobConfigured()) return undefined;
+  const paths = partIds.map((partId) => partPath(uploadId, partId));
+  try {
+    const parts: Buffer[] = [];
+    for (const path of paths) {
+      const { url } = await head(path);
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error(`part ${path}: ${response.status}`);
+      parts.push(Buffer.from(await response.arrayBuffer()));
+    }
+    const file = await put(`chat/${userId}/${filename}`, Buffer.concat(parts), { access: "public", addRandomSuffix: true, contentType: mimeType });
+    return file.url;
+  } catch (error) {
+    console.error("attachment assemble failed", error);
+    return undefined;
+  } finally {
+    await del(paths).catch(() => undefined);
+  }
 }
