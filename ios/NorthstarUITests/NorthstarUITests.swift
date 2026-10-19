@@ -459,6 +459,28 @@ final class NorthstarUITests: XCTestCase {
         XCTAssertTrue(stop.waitForNonExistence(timeout: 10))
     }
 
+    /// Route fits above the drawer; Apple's map attribution sits in the bottom corner above the low drawer.
+    func testMapFitAndAttribution() throws {
+        signInIfNeeded()
+        openTrip(ProcessInfo.processInfo.environment["FIT_TRIP"] ?? "My First Trip")
+        app.buttons.matching(identifier: ProcessInfo.processInfo.environment["FIT_DAY"] ?? "Day 1").firstMatch.tap()
+        sleep(4)
+        attach("fit-half")
+        let handle = element("drawer-handle")
+        handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+            .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        sleep(3)
+        attach("fit-low")
+        let legal = app.descendants(matching: .any)["Legal"]
+        if legal.exists {
+            XCTAssertGreaterThan(legal.frame.minY, app.frame.height * 0.7, "Map attribution should sit near the bottom, above the low drawer")
+            XCTAssertLessThan(legal.frame.maxY, handle.frame.minY + 2)
+        }
+        handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+            .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+        sleep(2)
+    }
+
     func testEditProfileName() throws {
         signInIfNeeded()
         func rename(to last: String) {

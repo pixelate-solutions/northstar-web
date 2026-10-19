@@ -11,6 +11,8 @@ struct PlanScreen: View {
     @State private var editingDay: Day?
     @State private var sheet: PlanSheet?
     @State private var camera: MapCameraPosition = .automatic
+    /// Bumped to re-fit the map to the current day/trip (the camera is positioned by PlanMap).
+    @State private var fitRequest = 0
     @State private var focusedLeg: Int?
     @State private var drawer: DrawerDetent = .half
     /// Finger translation while dragging. Plain @State (not @GestureState): @GestureState snaps back to 0 the
@@ -52,9 +54,14 @@ struct PlanScreen: View {
                     focusedLeg: focusedLeg,
                     camera: $camera,
                     scope: mapScope,
+                    fitRequest: fitRequest,
+                    // Fit routes into the area between the top controls and the drawer at its middle height.
+                    visibleInsets: EdgeInsets(top: geo.safeAreaInsets.top + 64, leading: 36, bottom: heights[.half]! + 16, trailing: 36),
                     onSelectStop: { editingStop = $0 }
                 )
-                .safeAreaPadding(.bottom, heights[.half]! - 24)
+                // The Apple Maps logo and Legal link sit at the bottom of the map's safe area: keep them in the
+                // bottom-left corner just above the low drawer (the drawer covers them when it's higher).
+                .safeAreaPadding(.bottom, heights[.peek]! + 4)
                 .ignoresSafeArea(edges: .top)
 
                 VStack(spacing: 0) {
@@ -72,10 +79,10 @@ struct PlanScreen: View {
         .background(Color.white)
         .onChange(of: selectedDayId) { _, _ in
             focusedLeg = nil
-            withAnimation(.easeInOut(duration: 0.35)) { camera = .automatic }
+            fitRequest += 1
         }
         .onChange(of: focusedLeg) { _, leg in
-            if leg == nil { withAnimation(.easeInOut(duration: 0.35)) { camera = .automatic } }
+            if leg == nil { fitRequest += 1 }
         }
         .sheet(item: $editingStop) { stop in
             StopEditorSheet(stop: stop).presentationDetents([.medium, .large]).presentationDragIndicator(.visible).solidSheet()
@@ -318,8 +325,12 @@ struct PlanMap: View {
     let focusedLeg: Int?
     @Binding var camera: MapCameraPosition
     let scope: Namespace.ID
+    let fitRequest: Int
+    /// The part of the map that's actually visible (not under the top controls or the drawer), from its edges.
+    let visibleInsets: EdgeInsets
     let onSelectStop: (Stop) -> Void
     @State private var routes = RouteService.shared
+    @State private var mapSize: CGSize = .zero
 
     private struct MapPoint: Identifiable {
         let id: Int
@@ -393,13 +404,50 @@ struct PlanMap: View {
         }
         .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
         .mapControls {} // Compass and scale are placed in PlanScreen's overlay.
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+            let first = mapSize == .zero
+            mapSize = size
+            if first { fit(pts.map { MKMapPoint($0.coordinate) }, animated: false) }
+        }
         .task(id: pts.map { "\($0.id)@\($0.coordinate.latitude),\($0.coordinate.longitude)" }.joined(separator: "|")) {
             routes.ensure(pts.map { ($0.id, $0.coordinate) })
+            fit(pts.map { MKMapPoint($0.coordinate) }, animated: true)
         }
+        .onChange(of: fitRequest) { _, _ in fit(pts.map { MKMapPoint($0.coordinate) }, animated: true) }
         .onChange(of: focusedLeg) { _, leg in
             guard let leg, let segment = segments.first(where: { $0.id == leg }) else { return }
-            let rect = segment.line?.boundingMapRect ?? MKMapRect(points: [MKMapPoint(segment.a), MKMapPoint(segment.b)])
-            withAnimation(.easeInOut(duration: 0.4)) { camera = .rect(rect.insetBy(dx: -rect.width * 0.35 - 2000, dy: -rect.height * 0.35 - 2000)) }
+            if let line = segment.line {
+                var coords = [CLLocationCoordinate2D](repeating: .init(), count: line.pointCount)
+                line.getCoordinates(&coords, range: NSRange(location: 0, length: line.pointCount))
+                fit(coords.map(MKMapPoint.init), animated: true)
+            } else {
+                fit([MKMapPoint(segment.a), MKMapPoint(segment.b)], animated: true)
+            }
+        }
+    }
+
+    /// Positions the camera so `points` fill the visible window (between the top controls and the drawer),
+    /// rather than the whole map, which the drawer partly covers.
+    private func fit(_ points: [MKMapPoint], animated: Bool) {
+        guard !points.isEmpty, mapSize.width > 0, mapSize.height > 0 else { return }
+        var box = MKMapRect(points: points)
+        // At least ~2 km across so a single stop isn't zoomed to the max.
+        let minSide = MKMapPointsPerMeterAtLatitude(box.origin.coordinate.latitude) * 2_000
+        box = box.insetBy(dx: -max(0, minSide - box.width) / 2, dy: -max(0, minSide - box.height) / 2)
+        let windowW = max(80, mapSize.width - visibleInsets.leading - visibleInsets.trailing)
+        let windowH = max(80, mapSize.height - visibleInsets.top - visibleInsets.bottom)
+        let scale = max(box.width / windowW, box.height / windowH) * 1.15 // map points per screen point, with margin
+        let windowCenter = CGPoint(x: visibleInsets.leading + windowW / 2, y: visibleInsets.top + windowH / 2)
+        let rect = MKMapRect(
+            x: box.midX - windowCenter.x * scale,
+            y: box.midY - windowCenter.y * scale,
+            width: mapSize.width * scale,
+            height: mapSize.height * scale
+        )
+        if animated {
+            withAnimation(.easeInOut(duration: 0.4)) { camera = .rect(rect) }
+        } else {
+            camera = .rect(rect)
         }
     }
 }
