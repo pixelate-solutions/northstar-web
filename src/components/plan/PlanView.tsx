@@ -4,7 +4,6 @@ import { closestCenter, DndContext, PointerSensor, TouchSensor, useSensor, useSe
 import { arrayMove, SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { BedDouble, Car, ChevronDown, ChevronLeft, ChevronRight, MapPin, NotebookPen, Route, Sun } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 
@@ -65,10 +64,12 @@ function tripAnchorPoints(days: DayJson[]) {
   const anchors = days.flatMap((d) => {
     const located = d.events
       .filter((e) => e.category !== "flight" && !/\b(airport|flight)\b/i.test(e.title))
-      .map((e) => coordsOf(e))
-      .filter((c): c is LatLng => Boolean(c));
+      .flatMap((e) => {
+        const c = coordsOf(e);
+        return c ? [{ event: e, coords: c }] : [];
+      });
     const anchor = located.at(-1);
-    return anchor ? [{ day: d, coords: anchor }] : [];
+    return anchor ? [{ day: d, event: anchor.event, coords: anchor.coords }] : [];
   });
   if (anchors.length < 3) return anchors;
   const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
@@ -350,7 +351,6 @@ const layoutStorage = {
 export function PlanView({ date }: { date: string | null }) {
   const { bundle, ask, highlightedEventIds } = useTrip();
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: "northstar-plan", storage: layoutStorage });
-  const router = useRouter();
   const isDesktop = useIsDesktop();
   const hydrated = useHydrated();
   // Selection is scoped to the day it was made on, so switching days clears it without an effect.
@@ -358,6 +358,10 @@ export function PlanView({ date }: { date: string | null }) {
   const selectedId = selection.date === date ? selection.id : null;
   const setSelectedId = (id: number | null) => setSelection({ date, id });
   const [tripSheet, setTripSheet] = useState(false);
+  // Whole-trip view: tapping a pin opens that stop's editor instead of jumping to its day.
+  const [tripEventId, setTripEventId] = useState<number | null>(null);
+  const tripEventDay = tripEventId !== null ? bundle.days.find((d) => d.events.some((e) => e.id === tripEventId)) ?? null : null;
+  const tripEvent = tripEventDay?.events.find((e) => e.id === tripEventId) ?? null;
   const day = date ? bundle.days.find((item) => item.date === date) ?? null : null;
 
   // Day view: stops in order. Trip view: one anchor per day (where you end up).
@@ -382,7 +386,7 @@ export function PlanView({ date }: { date: string | null }) {
         highlighted: highlightedEventIds.has(p.event.id),
       }))
     : tripAnchors.map((a, i) => ({
-        id: a.day.id,
+        id: a.event.id,
         lat: a.coords[0],
         lng: a.coords[1],
         label: String(a.day.dayNumber),
@@ -411,6 +415,22 @@ export function PlanView({ date }: { date: string | null }) {
 
   if (!hydrated) return <div className="h-full bg-white" />;
 
+  const tripStopSheet = (
+<Sheet open={Boolean(tripEvent && tripEventDay)} onClose={() => setTripEventId(null)} wide>
+      {tripEvent && tripEventDay ? (
+        <div className="pt-3">
+          <StopEditor
+            key={tripEvent.id}
+            event={tripEvent}
+            number={tripEventDay.events.findIndex((e) => e.id === tripEvent.id) + 1}
+            near={coordsOf(tripEvent) ? { lat: coordsOf(tripEvent)![0], lng: coordsOf(tripEvent)![1] } : null}
+            onClose={() => setTripEventId(null)}
+          />
+        </div>
+      ) : null}
+    </Sheet>
+  );
+
   const mapArea = (
     <>
       {isDesktop && ask.open ? (
@@ -421,7 +441,7 @@ export function PlanView({ date }: { date: string | null }) {
           extraPins={extraPins}
           route={route?.coordinates ?? null}
           selectedId={day ? selectedId : null}
-          onSelect={(id) => (day ? setSelectedId(id) : router.push(`/app/days/${bundle.days.find((d) => d.id === id)?.date}`))}
+          onSelect={(id) => (day ? setSelectedId(id) : setTripEventId(id))}
           mapsUrl={isDesktop ? mapsUrl : null}
         />
       )}
@@ -455,6 +475,7 @@ export function PlanView({ date }: { date: string | null }) {
             <div className="relative h-full">{mapArea}</div>
           </ResizablePanel>
         </ResizablePanelGroup>
+        {tripStopSheet}
       </div>
     );
   }
@@ -482,6 +503,7 @@ export function PlanView({ date }: { date: string | null }) {
         {listArea}
       </section>
       <MobileTripSheet open={tripSheet} onClose={() => setTripSheet(false)} />
+      {tripStopSheet}
     </div>
   );
 }

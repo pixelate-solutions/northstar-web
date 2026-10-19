@@ -481,6 +481,29 @@ final class NorthstarUITests: XCTestCase {
         sleep(2)
     }
 
+    /// Whole-trip view: tapping a pin opens that stop's sheet (not the day); the time tile is plain text.
+    func testTripPinOpensStop() throws {
+        signInIfNeeded()
+        app.buttons["Whole trip"].tap()
+        sleep(3)
+        let pin = app.buttons.matching(identifier: "map-pin").firstMatch
+        guard pin.waitForExistence(timeout: 10) else { throw XCTSkip("No located stops on this account") }
+        pin.tap()
+        XCTAssertTrue(app.buttons["Mark booked"].waitForExistence(timeout: 8) || app.buttons["Booked"].exists, "Pin should open the stop sheet")
+        attach("trip-pin-stop")
+        // The time tile is plain text but still opens the time picker.
+        let timeTile = app.datePickers.firstMatch
+        if timeTile.exists {
+            timeTile.tap()
+            XCTAssertTrue(app.pickerWheels.firstMatch.waitForExistence(timeout: 5) || app.datePickers.count > 1, "Tapping the time should open the picker")
+            attach("time-picker-open")
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+            sleep(1)
+        }
+        closeSheet()
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'DAY '")).firstMatch.exists, "Should still be on the whole-trip view")
+    }
+
     func testEditProfileName() throws {
         signInIfNeeded()
         func rename(to last: String) {

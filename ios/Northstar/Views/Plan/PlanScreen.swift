@@ -398,6 +398,7 @@ struct PlanMap: View {
                             .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
                     }
                     .accessibilityLabel(point.title)
+                    .accessibilityIdentifier("map-pin")
                 }
                 .annotationTitles(.hidden)
             }

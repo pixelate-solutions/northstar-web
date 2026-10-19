@@ -250,6 +250,12 @@ test("layout: whole day rows click, sidebar collapses, list/map resize, profile 
   await page.goto("/app");
   const shot = (name: string) => page.screenshot({ path: `test-results/screens/layout-${name}.png` });
 
+  // Whole-trip view: a map pin opens that stop's editor (it doesn't jump to the day).
+  await page.locator(".leaflet-marker-icon.ns-pin").last().click(); // topmost (pins can stack)
+  await expect(page.getByLabel("Stop name")).toBeVisible();
+  await expect(page).toHaveURL(/\/app$/);
+  await page.keyboard.press("Escape");
+
   // Clicking the far right of a day row (outside the title) opens that day.
   const row = page.getByRole("link", { name: /^Day 2$/ });
   const box = (await row.boundingBox())!;

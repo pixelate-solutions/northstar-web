@@ -22,6 +22,7 @@ struct StopEditorSheet: View {
     @State private var title = ""
     @State private var hasTime = false
     @State private var time = Date()
+    @AppStorage(Prefs.use24HourKey) private var use24Hour = false
     @State private var category = "other"
     @State private var cost = ""
     @State private var booked = false
@@ -55,12 +56,22 @@ struct StopEditorSheet: View {
                         if hasTime {
                             tile {
                                 Image(systemName: "clock").font(.system(size: 14, weight: .semibold)).foregroundStyle(NS.muted)
+                                Text(Fmt.clock(Fmt.timeString(time), use24Hour: use24Hour))
+                                Spacer(minLength: 0)
+                            }
+                            // The system picker draws its own capsule; keep it invisible on top so the tile
+                            // looks like the others and tapping it still opens the time picker.
+                            .overlay {
                                 DatePicker("", selection: $time, displayedComponents: .hourAndMinute)
                                     .labelsHidden()
                                     .disabled(readOnly)
                                     .onChange(of: time) { _, _ in saveTime() }
-                                Spacer(minLength: 0)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .scaleEffect(x: 3, y: 1.4)
+                                    .colorMultiply(.clear) // fully invisible, still tappable
+                                    .accessibilityLabel("Time")
                             }
+                            .clipped()
                         } else {
                             Button { hasTime = true; saveTime() } label: {
                                 tile {
