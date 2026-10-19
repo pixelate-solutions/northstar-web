@@ -129,14 +129,22 @@ enum AttachmentUploader {
 }
 
 extension UIImage {
+    /// Redraws into a plain 8-bit sRGB, opaque bitmap (transparent areas become white), at most `maxEdge` pixels on
+    /// the long side. Photos and screenshots are often wide-color/HDR with alpha, which can encode to a JPEG the
+    /// model misreads (a red test image came back "black").
     func scaledToFit(maxEdge: CGFloat) -> UIImage {
-        let longest = max(size.width, size.height)
-        guard longest > maxEdge else { return self }
-        let scale = maxEdge / longest
-        let target = CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+        let pixels = CGSize(width: size.width * scale, height: size.height * scale)
+        let factor = min(1, maxEdge / max(pixels.width, pixels.height, 1))
+        let target = CGSize(width: max(1, (pixels.width * factor).rounded()), height: max(1, (pixels.height * factor).rounded()))
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
-        return UIGraphicsImageRenderer(size: target, format: format).image { _ in draw(in: CGRect(origin: .zero, size: target)) }
+        format.opaque = true
+        format.preferredRange = .standard
+        return UIGraphicsImageRenderer(size: target, format: format).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: target))
+            draw(in: CGRect(origin: .zero, size: target))
+        }
     }
 }
 

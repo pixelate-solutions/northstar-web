@@ -242,7 +242,7 @@ final class NorthstarUITests: XCTestCase {
 
         // Ask offers the on-device assistant.
         app.tabBars.buttons["Ask"].tap()
-        let input = app.textFields["Ask Northstar"]
+        let input = app.textViews["ask-input"]
         XCTAssertTrue(input.waitForExistence(timeout: 10))
         input.tap()
         app.typeText("What's on Day 2?")
@@ -524,12 +524,18 @@ final class NorthstarUITests: XCTestCase {
     /// Pasting a copied photo into Ask attaches it, and the assistant can read it.
     func testAskPasteImage() throws {
         signInIfNeeded()
-        // A solid red image on the clipboard.
-        let red = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 96)).image { context in
-            UIColor.red.setFill()
-            context.fill(CGRect(x: 0, y: 0, width: 96, height: 96))
+        // A photo of a printed word and number on the clipboard (like a screenshot of a booking).
+        let number = Int.random(in: 10...99)
+        let code = "PINEAPPLE \(number)"
+        let picture = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 240)).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 600, height: 240))
+            (code as NSString).draw(at: CGPoint(x: 40, y: 80), withAttributes: [.font: UIFont.boldSystemFont(ofSize: 64), .foregroundColor: UIColor.black])
         }
-        UIPasteboard.general.image = red
+        UIPasteboard.general.image = picture
+        // The simulator's shared clipboard can take a moment to publish to other apps.
+        for _ in 0..<20 where !UIPasteboard.general.hasImages { usleep(100_000) }
+        sleep(1)
 
         app.tabBars.buttons["Ask"].tap()
         let input = app.textViews["ask-input"]
@@ -540,11 +546,16 @@ final class NorthstarUITests: XCTestCase {
         XCTAssertTrue(paste.waitForExistence(timeout: 5), "Paste should be offered for a copied photo")
         paste.tap()
         let chip = app.descendants(matching: .any).matching(identifier: "pending-attachment").firstMatch
+        if !chip.waitForExistence(timeout: 4) {
+            // Retry once if the clipboard hadn't reached the app yet.
+            input.press(forDuration: 1.1)
+            if app.menuItems["Paste"].waitForExistence(timeout: 4) { app.menuItems["Paste"].tap() }
+        }
         XCTAssertTrue(chip.waitForExistence(timeout: 5), "Pasted photo should become an attachment")
         attach("ask-pasted-photo")
-        input.typeText("Without using any tools: what single color fills this image? Answer with one word.")
+        input.typeText("Without using any tools: what exact text is written in this image? Reply with only that text.")
         app.buttons["ask-send"].tap()
-        let answer = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'red' AND NOT (label CONTAINS[c] 'single color')")).firstMatch
+        let answer = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'PINEAPPLE' AND label CONTAINS %@ AND NOT (label CONTAINS[c] 'exact text')", String(number))).firstMatch
         XCTAssertTrue(answer.waitForExistence(timeout: 150), "Assistant should describe the pasted photo")
         attach("ask-photo-answer")
         XCTAssertTrue(app.buttons["ask-attach"].exists, "Attach menu is available")
