@@ -784,14 +784,34 @@ struct SentAttachmentsRow: View {
     let onOpen: (Int) -> Void
     let onError: (String) -> Void
 
+    @State private var content: CGRect = .zero
+    @State private var visibleWidth: CGFloat = 0
+
     var body: some View {
-        // Fits on one line when it can; scrolls when there are many.
+        // Fits on one line when it can; scrolls when there are many, fading out at whichever edge has more to see.
         ViewThatFits(in: .horizontal) {
-            row
-            ScrollView(.horizontal, showsIndicators: false) { row }.defaultScrollAnchor(.trailing)
+            row.padding(.leading, 40)
+            ScrollView(.horizontal, showsIndicators: false) {
+                row.onGeometryChange(for: CGRect.self) { $0.frame(in: .named("sent-row")) } action: { content = $0 }
+            }
+            .defaultScrollAnchor(.trailing)
+            .coordinateSpace(.named("sent-row"))
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { visibleWidth = $0 }
+            .mask(fade)
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.leading, 40)
+    }
+
+    private var fade: some View {
+        let leading = content.minX < -1
+        let trailing = content.maxX > visibleWidth + 1
+        return HStack(spacing: 0) {
+            LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: leading ? 36 : 0)
+            Rectangle()
+            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: trailing ? 36 : 0)
+        }
+        .animation(.easeOut(duration: 0.15), value: leading)
+        .animation(.easeOut(duration: 0.15), value: trailing)
     }
 
     private var row: some View {
